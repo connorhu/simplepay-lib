@@ -767,7 +767,7 @@ final readonly class Signature
 - [ ] **Step 4: Futtasd újra**
 
 Run: `vendor/bin/phpunit tests/Unit/SignatureTest.php`
-Expected: PASS, 8 teszt.
+Expected: PASS, 9 teszt.
 
 - [ ] **Step 5: Commit**
 
@@ -1250,7 +1250,7 @@ final readonly class Money
 - [ ] **Step 5: Futtasd újra**
 
 Run: `vendor/bin/phpunit tests/Unit/MoneyTest.php`
-Expected: PASS, 12 teszt.
+Expected: PASS, 18 teszt.
 
 - [ ] **Step 6: Statikus elemzés**
 
@@ -1556,7 +1556,7 @@ enum Language: string
 - [ ] **Step 5: Futtasd újra**
 
 Run: `vendor/bin/phpunit tests/Unit/TransactionStatusTest.php tests/Unit/EnumParsingTest.php`
-Expected: PASS, 20 teszt.
+Expected: PASS, 22 teszt.
 
 - [ ] **Step 6: Statikus elemzés**
 
@@ -2331,7 +2331,7 @@ final readonly class RefundRequest
 - [ ] **Step 6: Futtasd újra**
 
 Run: `vendor/bin/phpunit tests/Unit/Request`
-Expected: PASS, 17 teszt.
+Expected: PASS, 24 teszt.
 
 - [ ] **Step 7: Statikus elemzés**
 
@@ -2604,7 +2604,7 @@ final class PayloadReader
 - [ ] **Step 4: Futtasd a `PayloadReader` tesztjeit**
 
 Run: `vendor/bin/phpunit tests/Unit/Internal`
-Expected: PASS, 13 teszt.
+Expected: PASS, 20 teszt.
 
 - [ ] **Step 5: Írd meg a válasz-DTO-k bukó tesztjeit**
 
@@ -3605,7 +3605,7 @@ final readonly class Client
 - [ ] **Step 4: Futtasd újra**
 
 Run: `vendor/bin/phpunit tests/Unit/ClientTransportTest.php`
-Expected: PASS, 11 teszt.
+Expected: PASS, 15 teszt.
 
 - [ ] **Step 5: Statikus elemzés**
 
@@ -4174,7 +4174,7 @@ A `refund()` után:
 - [ ] **Step 6: Futtasd újra**
 
 Run: `vendor/bin/phpunit tests/Unit/Ipn`
-Expected: PASS, 10 teszt.
+Expected: PASS, 14 teszt.
 
 - [ ] **Step 7: Statikus elemzés**
 

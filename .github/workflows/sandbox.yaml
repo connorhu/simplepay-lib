@@ -1,0 +1,30 @@
+name: Sandbox kontraktus
+
+on:
+    schedule:
+        - cron: '0 3 * * *'
+    workflow_dispatch: ~
+
+permissions:
+    contents: read
+
+jobs:
+    contract:
+        name: "SimplePay sandbox kontraktus-tesztek"
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.4'
+                  coverage: none
+
+            - uses: ramsey/composer-install@v3
+
+            - name: Kontraktus-tesztek a valódi sandbox ellen
+              run: vendor/bin/phpunit --group sandbox
+
+            - name: A rögzített fixture-ök eltérésének kimutatása
+              if: always()
+              run: git --no-pager diff --stat -- tests/Fixtures/sandbox
