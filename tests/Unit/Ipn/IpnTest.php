@@ -132,20 +132,29 @@ final class IpnTest extends TestCase
         self::assertSame('2026-08-30T12:06:00+02:00', $decoded['receiveDate']);
     }
 
-    /**
-     * Ismert hiba: az `appendReceiveDate()` a nyers törzsön csak `rtrim`-et hív,
-     * így a záró kapcsos zárójel elé kerülő ellenőrzés a vezető whitespace-t nem
-     * tolerálja, bár az aláírás-ellenőrzés és a `json_decode` egyaránt elfogadná
-     * ugyanezt a törzset. Ez a teszt a jelenlegi (elutasító) viselkedést rögzíti —
-     * lásd a task-11-report.md "Things to watch" szakaszát.
-     */
-    public function testALeadingWhitespaceRawBodyIsCurrentlyRejectedByAppendReceiveDate(): void
+    public function testTheConfirmationHandlesLeadingWhitespaceInTheRawBody(): void
     {
         $body = "  \n" . self::BODY;
 
-        $this->expectException(UnexpectedResponseException::class);
+        $confirmation = $this->client()->ipn($body, self::signature($body), self::receivedAt());
+        $decoded = json_decode($confirmation->responseBody(), true, 512, \JSON_THROW_ON_ERROR);
 
-        $this->client()->ipn($body, self::signature($body), self::receivedAt());
+        self::assertIsArray($decoded);
+        self::assertSame('ORDER-1', $decoded['orderRef']);
+        self::assertSame('2026-08-30T12:06:00+02:00', $decoded['receiveDate']);
+    }
+
+    public function testTheConfirmationHandlesLeadingAndTrailingWhitespaceInTheRawBody(): void
+    {
+        $body = "  \n" . self::BODY . "\n  ";
+
+        $confirmation = $this->client()->ipn($body, self::signature($body), self::receivedAt());
+        $decoded = json_decode($confirmation->responseBody(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertIsArray($decoded);
+        self::assertSame('ORDER-1', $decoded['orderRef']);
+        self::assertSame(99999999, $decoded['transactionId']);
+        self::assertSame('2026-08-30T12:06:00+02:00', $decoded['receiveDate']);
     }
 
     public function testTheConfirmationHandlesANestedObjectAtTheEndOfTheBody(): void

@@ -3852,7 +3852,7 @@ A `refund()` után:
      */
     private function appendReceiveDate(string $rawBody, \DateTimeImmutable $receivedAt): string
     {
-        $trimmed = rtrim($rawBody);
+        $trimmed = trim($rawBody);
 
         if (!str_starts_with($trimmed, '{') || !str_ends_with($trimmed, '}')) {
             throw new UnexpectedResponseException('A SimplePay értesítés törzse nem JSON objektum.');
