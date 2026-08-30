@@ -86,4 +86,42 @@ final class MoneyTest extends TestCase
 
         Currency::fromApi('GBP');
     }
+
+    public function testApiValueRejectsFloatWithExcessPrecisionForHuf(): void
+    {
+        $this->expectException(UnexpectedResponseException::class);
+
+        Money::fromApiValue(1000.5, Currency::HUF);
+    }
+
+    public function testApiValueAcceptsWholeFloatForHuf(): void
+    {
+        self::assertSame(1000, Money::fromApiValue(1000.0, Currency::HUF)->minorUnits);
+    }
+
+    public function testApiValueAcceptsFloatWithinPrecisionForEuro(): void
+    {
+        self::assertSame(1050, Money::fromApiValue(10.5, Currency::EUR)->minorUnits);
+    }
+
+    public function testApiValueRejectsFloatWithExcessPrecisionForEuro(): void
+    {
+        $this->expectException(UnexpectedResponseException::class);
+
+        Money::fromApiValue(10.505, Currency::EUR);
+    }
+
+    public function testUsdCurrencyWorks(): void
+    {
+        self::assertSame(2, Currency::USD->exponent());
+        self::assertSame('10.50', Money::fromMinorUnits(1050, Currency::USD)->toApiValue());
+    }
+
+    public function testNegativeAmountRoundtrip(): void
+    {
+        $money = Money::fromDecimalString('-10.50', Currency::EUR);
+
+        self::assertSame(-1050, $money->minorUnits);
+        self::assertSame('-10.50', $money->toApiValue());
+    }
 }

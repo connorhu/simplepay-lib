@@ -51,7 +51,17 @@ final readonly class Money
         }
 
         if (is_float($value)) {
-            return self::fromDecimalString(number_format($value, $currency->exponent(), '.', ''), $currency);
+            $formatted = number_format($value, $currency->exponent(), '.', '');
+            if ((float) $formatted !== $value) {
+                throw new UnexpectedResponseException(sprintf(
+                    'A(z) %s legfeljebb %d tizedesjegyet enged, kapott: "%s".',
+                    $currency->value,
+                    $currency->exponent(),
+                    $value,
+                ));
+            }
+
+            return self::fromDecimalString($formatted, $currency);
         }
 
         return self::fromDecimalString($value, $currency);
