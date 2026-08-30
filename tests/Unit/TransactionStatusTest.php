@@ -46,6 +46,26 @@ final class TransactionStatusTest extends TestCase
         self::assertSame($expected, $status->isFinal());
     }
 
+    public function testFinalityProviderCoversAllCases(): void
+    {
+        $providedCases = array_map(
+            static fn (array $data) => $data[0],
+            iterator_to_array(self::finality()),
+        );
+
+        $allCases = TransactionStatus::cases();
+
+        $missingCases = array_diff_key(
+            array_column($allCases, 'name', 'name'),
+            array_column($providedCases, 'name', 'name'),
+        );
+
+        self::assertEmpty(
+            $missingCases,
+            sprintf('Finality data provider is missing cases: %s', implode(', ', $missingCases)),
+        );
+    }
+
     public function testFinishedParsesFromTheApiValue(): void
     {
         self::assertSame(TransactionStatus::Finished, TransactionStatus::fromApi('FINISHED'));

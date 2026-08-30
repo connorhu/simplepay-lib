@@ -1427,7 +1427,7 @@ enum TransactionStatus: string
     {
         return match ($this) {
             self::Init, self::InPayment, self::Authorized, self::InFraud => false,
-            default => true,
+            self::Finished, self::Cancelled, self::Timeout, self::NotAuthorized, self::Fraud, self::Reversed, self::Refund => true,
         };
     }
 
