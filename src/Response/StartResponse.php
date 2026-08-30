@@ -8,6 +8,20 @@ use CodeConjure\SimplePay\Currency;
 use CodeConjure\SimplePay\Internal\PayloadReader;
 use CodeConjure\SimplePay\Money;
 
+/**
+ * A `salt` és a `timeout` a hivatalos dokumentáció szerint kötelező mezők, és
+ * a rögzített élő sandbox fixture (`tests/Fixtures/sandbox/raw_start.json`,
+ * Task 13) mindkettőt tartalmazza is — mégis nullázhatók maradnak itt.
+ *
+ * Ok: a csomagon belül semmi nem olvassa ki egyiket sem — a `salt` a
+ * SimplePay saját belső integritás-jelölése a `/start` válaszon, nem a
+ * csomag aláírás-ellenőrzésének része (azt a `Signature` fejléc adja), a
+ * `timeout` pedig csak tájékoztató visszajelzés arról, amit a hívó maga
+ * küldött be a kérésben. Egy hangos `UnexpectedResponseException` egy olyan
+ * mezőre, amit senki nem használ, csak egy sosem hasznosuló szigor lenne —
+ * a csomag "hangos hiba helyett néma" elve a ténylegesen felhasznált
+ * adatokra vonatkozik, nem minden dokumentált mezőre külön-külön.
+ */
 final readonly class StartResponse
 {
     public function __construct(

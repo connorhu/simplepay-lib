@@ -98,6 +98,8 @@ $confirmation = $client->ipn($rawRequestBody, $signatureHeader);
 //         Signature fejléc $confirmation->responseSignature()
 ```
 
+Az `ipn()` egy harmadik, opcionális `?DateTimeImmutable $receivedAt` paramétert is elfogad. Ez nem protokoll-mező, hanem tesztelhetőségi seam: a válaszba beírt `receiveDate` időbélyegét adja meg — alapértelmezés szerint a hívás pillanata (`new DateTimeImmutable()`). Determinisztikus időbélyeget enged átadni, ahelyett hogy a rendszeridőt kellene mockolni.
+
 ### Visszatérés a fizetőoldalról
 
 ```php
@@ -105,6 +107,47 @@ $data = $client->parseReturn($_GET['r'], $_GET['s']);
 ```
 
 **A visszatérési adat tájékoztató, nem bizonyíték.** Ez az az adat, ami a vásárló böngészőjén keresztül érkezik vissza; az aláírás miatt nem hamisítható, de attól még csak azt mondja meg, mit lát a vásárló. A rendelés állapotát mindig a `query()` vagy az IPN döntse el.
+
+## Hibakezelés
+
+A kivétel-hierarchia nem aszerint tagolódik, hol keletkezett a hiba, hanem aszerint, hogy a hívónak mit kell tennie vele:
+
+| Kivétel | Mikor | Mit tegyen a hívó |
+|---|---|---|
+| `ConfigurationException` | hiányzó/rossz merchant, secret, üres/hiányzó kötelező mező (pl. `orderRef`, `urls`) | ember kell, kódot vagy konfigot javítani |
+| `TransportException` | hálózat, időtúllépés, nem-JSON válasz a SimplePay-től | újrapróbálható |
+| `SignatureException` | bejövő aláírás nem stimmel | soha ne próbáld újra, logolj |
+| `UnexpectedResponseException` | hiányzó kötelező mező, ismeretlen státusz, értelmezhetetlen érték | a csomag hibája, jelenteni kell |
+| `RequestException` | a SimplePay elutasította a kérést | hibakódtól függ |
+| `DeveloperException` (a `RequestException` alatt) | a hibakód szerint a mi hibánk | kódot javítani |
+
+Mind implementálja a `SimplePayException` interfészt, tehát egyetlen `catch` mindet elkapja. A `DeveloperException` azért a `RequestException` leszármazottja, hogy egy `catch (RequestException)` mindkettőt elkapja, de aki külön akarja kezelni a "ezt a kódban kell javítani" esetet, az is megtehesse.
+
+```php
+use CodeConjure\SimplePay\Exception\RequestException;
+use CodeConjure\SimplePay\Exception\SignatureException;
+use CodeConjure\SimplePay\Exception\SimplePayException;
+use CodeConjure\SimplePay\Exception\TransportException;
+
+try {
+    $response = $client->start($startRequest);
+} catch (TransportException $e) {
+    // hálózat/időtúllépés — biztonságos később újrapróbálni
+    throw $e;
+} catch (RequestException $e) {
+    // a SimplePay elutasította — $e->codes(), $e->errors() a hibakódokért/leírásokért
+    foreach ($e->errors() as $error) {
+        // $error->code, $error->description, $error->isDeveloperError
+    }
+} catch (SimplePayException $e) {
+    // minden más SimplePay-specifikus hiba (aláírás, váratlan válasz, konfiguráció)
+    throw $e;
+}
+```
+
+**A csomag sosem próbál újra automatikusan.** Egy vak `/start` újrapróbálkozás dupla terhelést okozhatna a vásárló kártyáján — az újrapróbálás döntése (ha egyáltalán van) mindig a hívóé, sosem a csomagé.
+
+**Az időtúllépés a beadott PSR-18 kliens felelőssége**, nem a csomagé. A `Client` konstruktorban kapott `ClientInterface` implementáció (pl. `symfony/http-client`) dönt arról, mennyi ideig vár egy válaszra — a csomag ezt nem konfigurálja és nem korlátozza.
 
 ## Feature mátrix
 
@@ -130,7 +173,7 @@ $data = $client->parseReturn($_GET['r'], $_GET['s']);
 
 A `refunds:true` valóban hiányzik: az alakja (`refundStatus`, `refunds[]`) sandboxból strukturálisan sosem figyelhető meg, mert jóváírást csak befejezett fizetésen lehet indítani, azt pedig a csomag tesztsuite-ja emberi kattintás nélkül nem tudja előállítani. A `detailed:true` viszont **minden `query()` hívással kimegy** — ez nem opcionális, hívó által kikapcsolható viselkedés, hanem a csomag belső, szándékos döntése a `currency` mező biztosítására (lásd fent). Amit ez a kapcsoló emellett hozna (`customer`, `customerEmail`, `invoice{}`, `delivery`, `twoStep`, `shippingCost`, `discount`, és egy nem dokumentált `currencyEnum` mező), azt a csomag válasz-DTO-i továbbra sem olvassák ki.
 
-**A kártya, a HUF és a HU nyelv az egyetlen kombináció, amit a Task 13 kontraktus-tesztjei ténylegesen elküldtek az élő SimplePay sandboxnak.** A `StartContractTest` a `StartRequest` alapértelmezéseit használja (`methods: [PaymentMethod::Card]`, `language: Language::Hu`), a teszt-kereskedő (`PUBLICTESTHUF`) pedig csak HUF-ot fogad. A `WIRE` fizetési mód, az `EUR`/`USD` pénznem és az `EN`/`DE` nyelv mindegyike helyesen szerializálódik és értelmeződik vissza — egységtesztekkel lefedve —, de a SimplePay sosem látta őket egyetlen kérésben sem: sem az nem ismert, hogy a szolgáltatás elfogadja-e, sem az, hogy az átutalásos fizetés speciális, a kártyás folyamattól eltérő, a beérkezésig nyitva maradó folyamatát a csomag helyesen kezelné-e — erről a csomag jelenleg semmit nem modellez.
+**A kártya, a HUF és a HU nyelv az egyetlen kombináció, amit az élő sandbox kontraktus-tesztek ténylegesen elküldtek a SimplePay-nek.** A `StartContractTest` a `StartRequest` alapértelmezéseit használja (`methods: [PaymentMethod::Card]`, `language: Language::Hu`), a teszt-kereskedő (`PUBLICTESTHUF`) pedig csak HUF-ot fogad. A `WIRE` fizetési mód, az `EUR`/`USD` pénznem és az `EN`/`DE` nyelv mindegyike helyesen szerializálódik és értelmeződik vissza — egységtesztekkel lefedve —, de a SimplePay sosem látta őket egyetlen kérésben sem: sem az nem ismert, hogy a szolgáltatás elfogadja-e, sem az, hogy az átutalásos fizetés speciális, a kártyás folyamattól eltérő, a beérkezésig nyitva maradó folyamatát a csomag helyesen kezelné-e — erről a csomag jelenleg semmit nem modellez.
 
 ## Ismert bizonytalanságok
 
@@ -147,7 +190,17 @@ vendor/bin/phpstan analyse -c phpstan.dist.neon
 vendor/bin/ecs check
 ```
 
-A sandbox tesztek a valódi válaszokat `tests/Fixtures/sandbox/` alá írják, és a unit tesztek ezeket játsszák vissza. A `raw_*.json` fixture-ök a SimplePay nyers, byte-szintű válaszát rögzítik; a mellettük lévő, azonos nevű (előtag nélküli) fixture-ök a csomag saját DTO-in keresztül szerializált, ember által olvasható összefoglalók — a regressziót a nyers fixture-ök ellenőrzik, ezek nem a csomag saját szerializálását parsolnák vissza.
+A sandbox tesztek a valódi válaszokat `tests/Fixtures/sandbox/` alá írják, és a unit tesztek ezeket játsszák vissza. A `raw_*.json` fixture-ök a SimplePay nyers, byte-szintű válaszát rögzítik (érzékeny mezők — `customer`, `customerEmail`, `invoice`, `salt` — nélkül, lásd a design spec 13. fejezetét); a mellettük lévő, azonos nevű (előtag nélküli) fixture-ök a csomag saját DTO-in keresztül szerializált, ember által olvasható összefoglalók — a regressziót a nyers fixture-ök ellenőrzik, ezek nem a csomag saját szerializálását parsolnák vissza.
+
+### A nightly sandbox job — mit csinál, és mit nem
+
+A `.github/workflows/sandbox.yaml` minden éjjel (és kézzel is indítható) lefuttatja a `sandbox` csoportot egy eldobható CI-runneren. **A job sosem ír vissza semmit a repóba** — a runner fájlrendszere a job végén megsemmisül. Amit ténylegesen csinál:
+
+1. Lefuttatja a kontraktus-teszteket — ezek a runner lemezén felülírják/létrehozzák a fixture-fájlokat a friss SimplePay-válaszokkal.
+2. A frissen rögzített fixture-könyvtárat build artifactként feltölti, hogy egy ember megnézhesse, mi változott.
+3. Összeveti a runner lemezén lévő (frissen rögzített) állapotot a repóban committolt állapottal — módosult és vadonatúj fájlokkal együtt. Ha van eltérés, **a job hangosan elbukik** — ez a nightly jelzés.
+
+**A fixture repóba kerülése emberi lépés marad**: valaki letölti a job artifactját (vagy lokálisan futtatja a sandbox csoportot), megnézi a diffet, és ha helyesnek ítéli, commitolja. Csak ezután, a következő rendes CI-futáson kezdhet el bukni a gyors unit suite, ha a frissített fixture már nem illeszkedik a válasz-osztályok elvárásaihoz.
 
 ## Licenc
 

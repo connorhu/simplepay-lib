@@ -25,6 +25,20 @@ jobs:
             - name: Kontraktus-tesztek a valódi sandbox ellen
               run: vendor/bin/phpunit --group sandbox
 
-            - name: A rögzített fixture-ök eltérésének kimutatása
+            - name: A rögzített fixture-ök feltöltése build artifactként
               if: always()
-              run: git --no-pager diff --stat -- tests/Fixtures/sandbox
+              uses: actions/upload-artifact@v4
+              with:
+                  name: sandbox-fixtures
+                  path: tests/Fixtures/sandbox/
+                  if-no-files-found: warn
+
+            - name: A rögzített fixture-ök eltérésének kimutatása — bukjon, ha van drift
+              if: always()
+              run: |
+                  # A `git add -A` az új, még nem verziózott fixture-öket is felveszi az
+                  # indexbe, különben egy vadonatúj fájl a `git diff` számára láthatatlan
+                  # maradna. Az összehasonlítás alapja ezután a staged terület vs. HEAD.
+                  git add -A -- tests/Fixtures/sandbox
+                  git diff --cached --stat -- tests/Fixtures/sandbox
+                  git diff --cached --exit-code -- tests/Fixtures/sandbox

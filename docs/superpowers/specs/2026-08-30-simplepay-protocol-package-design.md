@@ -322,11 +322,16 @@ A SimplePay `transactionIds` és `orderRefs` néven **listát** vár. Az app ma 
 ```php
 final readonly class StartResponse
 {
-    public string $salt, $merchant, $orderRef, $transactionId, $paymentUrl;
+    public string $merchant, $orderRef, $transactionId, $paymentUrl;
     public Money $total;
-    public DateTimeImmutable $timeout;
+    public ?string $salt = null;
+    public ?DateTimeImmutable $timeout = null;
 }
+```
 
+> **Korrekció (záró teljes-branch review, 2026-08-30):** a `salt` és a `timeout` a hivatalos dokumentáció szerint kötelező mezők, és a rögzített élő sandbox fixture mindkettőt tartalmazza — ez a bekezdés korábban ennek megfelelően kötelezőnek írta le mindkettőt a `StartResponse`-on. A ténylegesen leszállított osztály mindkettőt nullázhatóként tartja meg, szándékosan: a csomagon belül semmi nem olvassa ki egyiket sem (a `salt` nem az aláírás-ellenőrzés része, a `timeout` csak a hívó saját bemenetének visszaigazolása), így egy hangos hiba egy sosem használt mezőre nem a csomag "hangos hiba helyett néma" elvét szolgálná, csak egy sosem hasznosuló szigort adna hozzá. A spec és a kód korábban emiatt ellentmondott egymásnak; ez a bekezdés a kódot tükrözi, nem fordítva. Lásd a `StartResponse` osztály docblockját.
+
+```php
 final readonly class QueryResponse
 {
     /** @var list<Transaction> */
@@ -528,7 +533,11 @@ phpunit --group sandbox    élő hívás → ellenőriz ÉS kiírja a választ
 phpunit                    a unit tesztek EZEKET a fixture-öket játsszák vissza
 ```
 
-A mockok tehát nem kitalált, hanem rögzített valóságot játszanak vissza. Ha a SimplePay megváltoztat egy válaszmezőt, a nightly sandbox futás frissíti a fixture-t, és a unit tesztek elkezdenek bukni — pont a kívánt helyen. A fixture-ök a repóban verziózva vannak, tehát a változás diffként látszik.
+A mockok tehát nem kitalált, hanem rögzített valóságot játszanak vissza.
+
+> **Pontosítás a hurok mechanizmusáról (záró teljes-branch review, 2026-08-30).** Ez a bekezdés korábban úgy fogalmazott, mintha a nightly futás automatikusan frissítené a repóban lévő fixture-t, és ez magától buktatná a unit teszteket a következő futáson. Ez nem igaz, és a `.github/workflows/sandbox.yaml` sosem is csinálta ezt: a nightly job egy eldobható CI-runneren fut, a runner fájlrendszere a job végén megsemmisül, tehát a job maga **soha nem ír vissza semmit a repóba** — sem a fixture-fájlokat, sem egy commitot. Amit a workflow ténylegesen tesz: lefuttatja a kontraktus-teszteket (ezek a runner lemezén felülírják/létrehozzák a `tests/Fixtures/sandbox/*.json` fájlokat), a frissen rögzített fixture-könyvtárat build artifactként feltölti, majd a runner lemezén lévő (frissen rögzített) állapotot összeveti a repóban committolt állapottal (`git add -A` az új, verziózatlan fájlak felvételéhez, majd `git diff --cached --exit-code`). Ha van eltérés — akár módosult mező, akár vadonatúj fixture —, a job **hangosan elbukik**, ez a nightly jelzés. A **fixture repóba kerülése ezután mindig emberi lépés marad**: valaki letölti a job artifactját (vagy lokálisan futtatja a sandbox csoportot), megnézi a diffet, és ha helyesnek ítéli, commitolja. Csak *ezután*, a következő rendes (push/PR-re futó) CI-futáson kezdhet el bukni a gyors unit suite, ha a frissített fixture már nem illeszkedik a válasz-osztályok elvárásaihoz — ez a tényleges "elkezdenek bukni — pont a kívánt helyen" pillanat, nem a nightly futás maga. A fixture-ök a repóban verziózva vannak, tehát a (manuálisan commitolt) változás diffként látszik.
+>
+> **Redakció.** A rögzítés "érzékeny mezők nélkül" történik (lásd lent) — a `SandboxTestCase` nyers rögzítője (`recordRaw()`) egy redakciós listát alkalmaz, mielőtt a fájlt kiírná, és legalább a `customer`, `customerEmail`, `invoice` mezőket és minden `salt` értéket (a válasz tetején és a `transactions[]` elemein belül egyaránt) kitörli, mielőtt a JSON lemezre kerülne — nem utólag, a rögzítés pillanatában.
 
 ### Unit tesztek (alapértelmezett futás)
 
