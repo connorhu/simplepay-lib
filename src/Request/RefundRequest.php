@@ -14,7 +14,7 @@ final readonly class RefundRequest
         public ?string $orderRef = null,
         public ?string $transactionId = null,
     ) {
-        if (null === $orderRef && null === $transactionId) {
+        if (!self::isPresent($orderRef) && !self::isPresent($transactionId)) {
             throw new ConfigurationException(
                 'A jóváíráshoz orderRef vagy transactionId kell.',
             );
@@ -29,14 +29,23 @@ final readonly class RefundRequest
             'currency' => $this->refundTotal->currency->value,
         ];
 
-        if (null !== $this->orderRef) {
+        if (self::isPresent($this->orderRef)) {
             $payload['orderRef'] = $this->orderRef;
         }
 
-        if (null !== $this->transactionId) {
+        if (self::isPresent($this->transactionId)) {
             $payload['transactionId'] = $this->transactionId;
         }
 
         return $payload;
+    }
+
+    /**
+     * Egy `null` vagy üres string nem azonosít semmit — a hívó gyakran
+     * hiányzó adatot `''`-re redukál, ezt itt kell elkapni, nem az API-nál.
+     */
+    private static function isPresent(?string $value): bool
+    {
+        return null !== $value && '' !== $value;
     }
 }

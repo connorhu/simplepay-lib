@@ -44,4 +44,36 @@ final class RefundRequestTest extends TestCase
 
         new RefundRequest(refundTotal: Money::fromMinorUnits(500, Currency::HUF));
     }
+
+    public function testABlankOrderRefWithoutATransactionIdIsRejected(): void
+    {
+        $this->expectException(ConfigurationException::class);
+
+        new RefundRequest(
+            refundTotal: Money::fromMinorUnits(500, Currency::HUF),
+            orderRef: '',
+        );
+    }
+
+    public function testABlankTransactionIdWithoutAnOrderRefIsRejected(): void
+    {
+        $this->expectException(ConfigurationException::class);
+
+        new RefundRequest(
+            refundTotal: Money::fromMinorUnits(500, Currency::HUF),
+            transactionId: '',
+        );
+    }
+
+    public function testABlankOrderRefWithARealTransactionIdConstructsFine(): void
+    {
+        $payload = new RefundRequest(
+            refundTotal: Money::fromMinorUnits(500, Currency::HUF),
+            orderRef: '',
+            transactionId: '99999999',
+        )->toPayload();
+
+        self::assertSame('99999999', $payload['transactionId']);
+        self::assertArrayNotHasKey('orderRef', $payload);
+    }
 }

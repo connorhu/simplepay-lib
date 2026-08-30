@@ -50,4 +50,18 @@ final class QueryRequestTest extends TestCase
 
         new QueryRequest();
     }
+
+    public function testAListOfOnlyBlankTransactionIdsIsRejected(): void
+    {
+        $this->expectException(ConfigurationException::class);
+
+        new QueryRequest(transactionIds: ['']);
+    }
+
+    public function testBlankEntriesAreDroppedButUsableOnesSurvive(): void
+    {
+        $payload = new QueryRequest(orderRefs: ['', 'ORDER-1'])->toPayload();
+
+        self::assertSame(['ORDER-1'], $payload['orderRefs']);
+    }
 }

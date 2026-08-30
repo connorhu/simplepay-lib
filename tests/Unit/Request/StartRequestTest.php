@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CodeConjure\SimplePay\Tests\Unit\Request;
 
 use CodeConjure\SimplePay\Currency;
+use CodeConjure\SimplePay\Exception\ConfigurationException;
 use CodeConjure\SimplePay\Language;
 use CodeConjure\SimplePay\Money;
 use CodeConjure\SimplePay\PaymentMethod;
@@ -66,9 +67,42 @@ final class StartRequestTest extends TestCase
 
     public function testPayloadCarriesNoSnakeCaseKeys(): void
     {
-        foreach (array_keys(self::request()->toPayload()) as $key) {
+        $payload = self::request()->toPayload();
+        $topLevelKeyCount = count($payload);
+
+        $totalKeyCount = self::assertNoSnakeCaseKeysRecursively($payload);
+
+        // A historikus hiba a beágyazott map-ekben (invoice, url) élt, nem a
+        // felső szinten — ha a rekurzió nem néz bele azokba, ez a teszt
+        // üresen futna át egy snake_case kulcson is. Ezért bizonyítjuk, hogy
+        // ténylegesen több kulcsot vizsgáltunk meg, mint amennyi a felső
+        // szinten van.
+        self::assertGreaterThan(
+            $topLevelKeyCount,
+            $totalKeyCount,
+            'A rekurzív ellenőrzésnek be kell néznie a beágyazott map-ekbe is, nem csak a felső szintre.',
+        );
+    }
+
+    /**
+     * @param array<array-key, mixed> $payload
+     *
+     * @return int a megvizsgált kulcsok száma, beleértve a beágyazottakat is
+     */
+    private static function assertNoSnakeCaseKeysRecursively(array $payload): int
+    {
+        $count = 0;
+
+        foreach ($payload as $key => $value) {
             self::assertStringNotContainsString('_', (string) $key);
+            ++$count;
+
+            if (is_array($value)) {
+                $count += self::assertNoSnakeCaseKeysRecursively($value);
+            }
         }
+
+        return $count;
     }
 
     public function testPayloadDoesNotCarryClientManagedFields(): void
@@ -145,5 +179,32 @@ final class StartRequestTest extends TestCase
 
         self::assertSame(['CARD', 'WIRE'], $request->toPayload()['methods']);
         self::assertSame('EN', $request->toPayload()['language']);
+    }
+
+    public function testInvoiceRejectsABlankRequiredField(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/zip/');
+
+        new Invoice(
+            name: 'Teszt Elek',
+            country: 'HU',
+            city: 'Budapest',
+            zip: '',
+            address: 'Fő utca 1.',
+        );
+    }
+
+    public function testInvoiceKeepsAZeroPostcode(): void
+    {
+        $invoice = new Invoice(
+            name: 'Teszt Elek',
+            country: 'HU',
+            city: 'Budapest',
+            zip: '0',
+            address: 'Fő utca 1.',
+        );
+
+        self::assertSame('0', $invoice->toPayload()['zip']);
     }
 }

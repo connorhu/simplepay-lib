@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace CodeConjure\SimplePay\Request;
 
+use CodeConjure\SimplePay\Exception\ConfigurationException;
+
 final readonly class Invoice
 {
     public function __construct(
@@ -16,6 +18,20 @@ final readonly class Invoice
         public ?string $state = null,
         public ?string $phone = null,
     ) {
+        foreach ([
+            'name' => $name,
+            'country' => $country,
+            'city' => $city,
+            'zip' => $zip,
+            'address' => $address,
+        ] as $field => $value) {
+            if ('' === $value) {
+                throw new ConfigurationException(sprintf(
+                    'A számlázási cím "%s" mezője nem lehet üres.',
+                    $field,
+                ));
+            }
+        }
     }
 
     /** @return array<string, string> */

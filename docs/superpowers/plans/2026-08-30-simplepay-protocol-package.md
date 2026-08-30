@@ -1625,9 +1625,42 @@ final class StartRequestTest extends TestCase
 
     public function testPayloadCarriesNoSnakeCaseKeys(): void
     {
-        foreach (array_keys(self::request()->toPayload()) as $key) {
+        $payload = self::request()->toPayload();
+        $topLevelKeyCount = count($payload);
+
+        $totalKeyCount = self::assertNoSnakeCaseKeysRecursively($payload);
+
+        // A historikus hiba a beágyazott map-ekben (invoice, url) élt, nem a
+        // felső szinten — ha a rekurzió nem néz bele azokba, ez a teszt
+        // üresen futna át egy snake_case kulcson is. Ezért bizonyítjuk, hogy
+        // ténylegesen több kulcsot vizsgáltunk meg, mint amennyi a felső
+        // szinten van.
+        self::assertGreaterThan(
+            $topLevelKeyCount,
+            $totalKeyCount,
+            'A rekurzív ellenőrzésnek be kell néznie a beágyazott map-ekbe is, nem csak a felső szintre.',
+        );
+    }
+
+    /**
+     * @param array<array-key, mixed> $payload
+     *
+     * @return int a megvizsgált kulcsok száma, beleértve a beágyazottakat is
+     */
+    private static function assertNoSnakeCaseKeysRecursively(array $payload): int
+    {
+        $count = 0;
+
+        foreach ($payload as $key => $value) {
             self::assertStringNotContainsString('_', (string) $key);
+            ++$count;
+
+            if (is_array($value)) {
+                $count += self::assertNoSnakeCaseKeysRecursively($value);
+            }
         }
+
+        return $count;
     }
 
     public function testPayloadDoesNotCarryClientManagedFields(): void
@@ -1834,6 +1867,8 @@ declare(strict_types=1);
 
 namespace CodeConjure\SimplePay\Request;
 
+use CodeConjure\SimplePay\Exception\ConfigurationException;
+
 final readonly class Invoice
 {
     public function __construct(
@@ -1846,6 +1881,20 @@ final readonly class Invoice
         public ?string $state = null,
         public ?string $phone = null,
     ) {
+        foreach ([
+            'name' => $name,
+            'country' => $country,
+            'city' => $city,
+            'zip' => $zip,
+            'address' => $address,
+        ] as $field => $value) {
+            if ('' === $value) {
+                throw new ConfigurationException(sprintf(
+                    'A számlázási cím "%s" mezője nem lehet üres.',
+                    $field,
+                ));
+            }
+        }
     }
 
     /** @return array<string, string> */
@@ -1983,21 +2032,39 @@ use CodeConjure\SimplePay\Exception\ConfigurationException;
  */
 final readonly class QueryRequest
 {
+    /** @var list<string> */
+    public array $transactionIds;
+
+    /** @var list<string> */
+    public array $orderRefs;
+
+    public bool $detailed;
+
+    public bool $refunds;
+
     /**
      * @param list<string> $transactionIds
      * @param list<string> $orderRefs
      */
     public function __construct(
-        public array $transactionIds = [],
-        public array $orderRefs = [],
-        public bool $detailed = false,
-        public bool $refunds = false,
+        array $transactionIds = [],
+        array $orderRefs = [],
+        bool $detailed = false,
+        bool $refunds = false,
     ) {
+        $transactionIds = self::withoutBlanks($transactionIds);
+        $orderRefs = self::withoutBlanks($orderRefs);
+
         if ([] === $transactionIds && [] === $orderRefs) {
             throw new ConfigurationException(
                 'A lekérdezéshez legalább egy transactionId vagy orderRef kell.',
             );
         }
+
+        $this->transactionIds = $transactionIds;
+        $this->orderRefs = $orderRefs;
+        $this->detailed = $detailed;
+        $this->refunds = $refunds;
     }
 
     /** @return array<string, mixed> */
@@ -2023,6 +2090,22 @@ final readonly class QueryRequest
 
         return $payload;
     }
+
+    /**
+     * Egy üres string a listában nem azonosít semmit; kiszűrjük, mielőtt
+     * eldöntenénk, hogy a lekérdezés üres-e, és mielőtt kimenne a payloadban.
+     *
+     * @param list<string> $values
+     *
+     * @return list<string>
+     */
+    private static function withoutBlanks(array $values): array
+    {
+        return array_values(array_filter(
+            $values,
+            static fn (string $value): bool => '' !== $value,
+        ));
+    }
 }
 ```
 
@@ -2045,7 +2128,7 @@ final readonly class RefundRequest
         public ?string $orderRef = null,
         public ?string $transactionId = null,
     ) {
-        if (null === $orderRef && null === $transactionId) {
+        if (!self::isPresent($orderRef) && !self::isPresent($transactionId)) {
             throw new ConfigurationException(
                 'A jóváíráshoz orderRef vagy transactionId kell.',
             );
@@ -2060,15 +2143,24 @@ final readonly class RefundRequest
             'currency' => $this->refundTotal->currency->value,
         ];
 
-        if (null !== $this->orderRef) {
+        if (self::isPresent($this->orderRef)) {
             $payload['orderRef'] = $this->orderRef;
         }
 
-        if (null !== $this->transactionId) {
+        if (self::isPresent($this->transactionId)) {
             $payload['transactionId'] = $this->transactionId;
         }
 
         return $payload;
+    }
+
+    /**
+     * Egy `null` vagy üres string nem azonosít semmit — a hívó gyakran
+     * hiányzó adatot `''`-re redukál, ezt itt kell elkapni, nem az API-nál.
+     */
+    private static function isPresent(?string $value): bool
+    {
+        return null !== $value && '' !== $value;
     }
 }
 ```
