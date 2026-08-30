@@ -3,6 +3,11 @@
 > **Státusz:** Jóváhagyva.
 > **Dátum:** 2026-08-30
 > **Fázis:** 1 / 2. A Payum-adapter és a Sylius plugin külön specet kap, a jelen csomag elkészülte után.
+> **Elsődleges forrás:** *SimplePay v2.1 fejlesztői dokumentáció* — `SimplePay_2.x_Payment_HU_260504.pdf`
+> (2026.05.04-es revízió), elérhető a https://simplepay.hu/fejlesztoknek/ oldalon
+> (közvetlen letöltés: `https://simplepartner.hu/download.php?target=v21dochu`). Ahol ez a spec
+> protokoll-tényt állít, az erre a dokumentumra vezethető vissza; az élő sandbox mérés (Task 13)
+> megerősítés, nem elsődleges forrás. A rövidebb hivatkozásokban lent: „a hivatalos dokumentáció”.
 
 ---
 
@@ -345,6 +350,8 @@ final readonly class RefundResponse
 
 A `QueryResponse` szerkezete a `transactions[]` tömb köré épül — pontosan az, amit mindkét mai implementáció félreolvas.
 
+> **Dokumentum-egyeztetés (Task 13, 2026-08-30, a hivatalos dokumentáció `3.13 query` és `3.16 refund` szakasza alapján):** a fenti `Transaction` és `RefundResponse` a válasz egy részhalmazát modellezi, nem a teljeset. A dokumentált `/query` válasz minden tranzakción tartalmaz egy `resultCode` (pl. `"OK"`, sosem magyarázva) és egy `remainingTotal` mezőt is, valamint külön `finishDate`-et a `paymentDate` mellett — ezeket a `Transaction` jelenleg nem olvassa ki, csendben eldobja. Ha a lekérdezés a `refunds` paraméterrel megy ki, minden tranzakció kaphat egy `refundStatus` (pl. `"PARTIAL"`) és egy `refunds` listát (`transactionId`, `refundTotal`, `refundDate`, `status` elemekkel) is — ezt a `Transaction`/`QueryResponse` jelenleg egyáltalán nem modellezi. A dokumentált `/refund` válasz mezői — `merchant`, `orderRef`, `currency`, `transactionId`, `refundTransactionId`, `refundTotal`, `remainingTotal` — nem tartalmaznak `status` mezőt (a `RefundResponse.status` jelenleg mindig `null` marad éles válaszon), viszont a `RefundResponse` nem olvassa ki a dokumentált `currency`, `refundTotal` és `remainingTotal` mezőket. Ez utóbbi — a visszatérítés utáni fennmaradó, még visszatéríthető összeg — pénzügyi szempontból releváns adat, amit a hívó jelenleg csak egy külön `query(refunds: true)` hívással tudna megszerezni. **Ez egy talált, de NEM javított eltérés** — a döntést, hogy a `Transaction`/`RefundResponse` bővüljön-e ezekkel a mezőkkel, szándékosan a projekt tulajdonosára hagyva, mert ez nyilvános DTO-alak-bővítés, nem a Task 13 fixture/teszt-korrekciós hatókörébe tartozó javítás. Lásd a Task 13 jelentését a teljes idézetekért.
+
 ## 8. Aláírás és HTTP-réteg
 
 ### Az aláírás egyetlen szabálya
@@ -383,7 +390,9 @@ Három lépés, ebben a sorrendben:
 
 ## 9. IPN
 
-A SimplePay a kereskedői admin felületen ("Technikai adatok" fül, fiókszintű beállítás — nincs per-request IPN-cím mező, lásd 7. fejezet) beállított IPN-címre POST-ol JSON-t `Signature` fejléccel, és elvárja, hogy a kapott JSON-t `receiveDate` mezővel kiegészítve, aláírva visszaküldd. Amíg ez nem megy vissza, a SimplePay úgy veszi, nem kaptuk meg, és újraküldi.
+A SimplePay a kereskedői admin felületen ("Technikai adatok" oldal, "Rendszer értesítések" panel, fiókszintű beállítás — nincs per-request IPN-cím mező, lásd 7. fejezet) beállított IPN-címre POST-ol JSON-t `Signature` fejléccel, és elvárja, hogy a kapott JSON-t `receiveDate` mezővel kiegészítve, aláírva visszaküldd. Amíg ez nem megy vissza, a SimplePay úgy veszi, nem kaptuk meg, és újraküldi.
+
+**A `receiveDate` formátuma (Task 13, a hivatalos dokumentáció alapján lezárva):** a dokumentáció kimondja, hogy „minden időpontot ISO 8601 szabvány szerinti stringként (2018-09-15T11:25:37+02:00) kell átadni” — ez az általános szabály, kettősponttal a időzóna-eltolásban, pontosan megegyezik a `\DateTimeInterface::ATOM` PHP-formátummal, amit a `Client::RECEIVE_DATE_FORMAT` már használ. A dokumentum egyetlen konkrét IPN-válasz mintája (3.14 szakasz) viszont kettőspont nélküli eltolást mutat (`"receiveDate":"2019-09-09T14:46:20+0200"`), ugyanígy a mellette lévő `finishDate`/`paymentDate` is — ez a dokumentum belső ellentmondása, nem új szabály: az összes többi, később dátumozott (2025–2026) példa a dokumentumban következetesen a kettőspontos formátumot használja. A kettőspont nélküli minta egy 2019-es, feltehetően azóta nem frissített illusztráció maradványa. Az `ATOM` formátum tehát marad — nincs kódmódosítás —, de ezt a belső dokumentum-ellentmondást érdemes tudni, ha valaha egy éles `receiveDate` visszautasításra kerülne.
 
 ```php
 $confirmation = $client->ipn($rawBody, $signatureHeader);
@@ -490,6 +499,8 @@ Az új viselkedés: ismeretlen státuszérték `UnexpectedResponseException`-t d
 
 A fenti tagok a dokumentáció alapján kerültek fel; a végleges listát a sandbox kontraktus-teszt rögzíti (13. fejezet).
 
+> **Dokumentum-egyeztetés (Task 13, 2026-08-30):** a hivatalos dokumentáció „2 Tranzakció és státuszai” szakasza egy explicit, kilenc soros táblázatban sorolja fel a `query`-vel lekérdezhető státuszokat: `INIT`, `TIMEOUT`, `CANCELLED`, `NOTAUTHORIZED`, `INPAYMENT`, `INFRAUD`, `AUTHORIZED`, `REVERSED`, `FINISHED`. A fenti enumban szereplő **`FRAUD` és `REFUND` egyike sem szerepel ebben a táblázatban**, sem máshol a dokumentum 95 oldalán önálló tranzakció-státuszként (az „INFRAUD” és a „fraud monitoring”/„fraud-vizsgálat” kifejezések igen, de azok nem azonosak a `FRAUD` állapottal). A `Refund` és `Fraud` esetek eredete a terv tervezési fázisából ered (lásd Task 6 brief), nem ebből a dokumentumból, és a sandbox élő futása során (Task 13) sem került elő egyik sem — a megfigyelt egyetlen valódi státusz `INIT` volt. **Nem törlöm őket**, mert a dokumentáció hiánya nem bizonyítja a nemlétezésüket (lehet elavult vagy nem kimerítő a lista, és mindkettő valós SimplePay-koncepció — csalásgyanú lezárása, illetve visszatérítés — még ha a `query` válasz „státusz” mezőjeként a dokumentáció szerint sosem jelennek is meg), de prominensen jelzem: **kilenc dokumentált érték áll szemben tizeneggyel a kódban**, és ha valaha éles válaszban egyik sem fordul elő, azt érdemes lenne felülvizsgálni, hogy tényleg a `TransactionStatus` enumhoz tartoznak-e, vagy egy másik mező (pl. a `refundStatus`, lásd 7. fejezet) értékei keveredtek ide tervezéskor.
+
 ## 13. Tesztstratégia
 
 ### A visszacsatolási hurok
@@ -567,11 +578,15 @@ A `README.md` állandó szekciója, ez adja a fogódzót a későbbi bővítésh
 
 ## 16. Ismert bizonytalanságok
 
-Ez a szekció is a README része, nem csak a specé. Jelenleg két tétel:
+Ez a szekció is a README része, nem csak a specé.
 
-**A `receiveDate` pontos formátuma.** Az IPN-hez a SimplePay hív minket, ahhoz kívülről elérhető URL kell — ezt egy csomag tesztsuite-ja nem tudja előállítani. Amit az 1. fázisban tesztelni tudunk: az aláírás-ellenőrzést és a válasz felépítését egy kézzel összerakott üzeneten. A formátumot a 2. fázis zárja le, amikor a Payum- és Sylius-réteg már a valódi boltban fut: az első igazi sandbox-fizetés IPN-jét fixture-ként rögzítjük.
+**A `receiveDate` pontos formátuma — a dokumentum-oldala lezárva (Task 13, 2026-08-30).** A hivatalos dokumentáció (`SimplePay_2.x_Payment_HU_260504.pdf`, lásd a spec elején) kimondja: „minden időpontot ISO 8601 szabvány szerinti stringként (2018-09-15T11:25:37+02:00) kell átadni” — ez megegyezik a `\DateTimeInterface::ATOM`-mal, amit a `Client::RECEIVE_DATE_FORMAT` már használ (részletek: 9. fejezet). Ami továbbra sem ellenőrizhető: hogy egy valódi, élesben küldött `receiveDate` visszaigazolást a SimplePay ténylegesen elfogad-e — ehhez kívülről elérhető URL kell, amit egy csomag tesztsuite-ja nem tud előállítani. Amit az 1. fázisban tesztelni tudunk: az aláírás-ellenőrzést és a válasz felépítését egy kézzel összerakott üzeneten. Az empirikus megerősítést a 2. fázis zárja le, amikor a Payum- és Sylius-réteg már a valódi boltban fut: az első igazi sandbox-fizetés IPN-jét fixture-ként rögzítjük.
 
-**Egy sikeres jóváírás (`refund`) válaszának pontos alakja.** (Task 13, 2026-08-30.) A `RefundResponse::fromPayload()` mezői a dokumentáció alapján készültek, de sandbox ellen még sosem lettek ellenőrizve élő adaton. Jóváírni csak egy már befejezett fizetést lehet, azt pedig a kontraktus-teszt emberi kattintás nélkül, a fizetőoldalon átmenve nem tudja előállítani — ugyanaz a szerkezeti korlát, mint a `receiveDate`-nél. A Task 13 sandbox kontraktus-tesztje ezért csak az elutasítás alakját (`errorCodes`) tudta rögzíteni (`tests/Fixtures/sandbox/refund_error.json`), a sikeres válasz alakját nem. A 2. fázisban, az első valódi sandbox-fizetés jóváírásakor ezt is fixture-ként kell rögzíteni, és a `FixtureConformanceTest`-nek a `refund.json`-on át kell ereszteni a `RefundResponse::fromPayload()`-ot.
+**Egy sikeres jóváírás (`refund`) válaszának pontos alakja — részben lezárva dokumentum alapján, élőben még nem ellenőrizve (Task 13, 2026-08-30).** A hivatalos dokumentáció (3.16 szakasz) megadja a mezőket: `salt`, `merchant`, `orderRef`, `currency`, `transactionId`, `refundTransactionId`, `refundTotal`, `remainingTotal` — **nincs közöttük `status` mező**. A jelen `RefundResponse` viszont fordítva hiányos: van `status` mezője (ami dokumentáció szerint sosem kap értéket éles válaszon), de nem olvassa ki a dokumentált `currency`, `refundTotal` és `remainingTotal` mezőket (részletek: 7. fejezet). Ez utóbbi eltérést a dokumentáció már lezárja — nem kell hozzá élő adat —, de **szándékosan nem javítottam**, mert nyilvános DTO-alak-bővítés, amit a projekt tulajdonosának kell eldöntenie, nem a Task 13 hatóköre. Ami továbbra is csak sandboxból deríthető ki: hogy a dokumentált alak pontosan így érkezik-e meg élesben (mezőnevek, típusok), mert jóváírni csak egy már befejezett fizetést lehet, azt pedig a kontraktus-teszt emberi kattintás nélkül nem tudja előállítani — ugyanaz a szerkezeti korlát, mint a `receiveDate`-nél. A Task 13 sandbox kontraktus-tesztje ezért csak az elutasítás alakját (`errorCodes`) tudta rögzíteni (`tests/Fixtures/sandbox/refund_error.json`), a sikeres válasz alakját nem. A 2. fázisban, az első valódi sandbox-fizetés jóváírásakor ezt is fixture-ként kell rögzíteni, és a `FixtureConformanceTest`-nek a `refund.json`-on át kell ereszteni a `RefundResponse::fromPayload()`-ot.
+
+**A `TransactionStatus` enum két, dokumentumban nem talált tagja.** (Task 13, 2026-08-30.) A hivatalos dokumentáció kilenc tranzakció-státuszt sorol fel; a kódban tizenegy van — `FRAUD` és `REFUND` nincs a dokumentált listában (részletek: 12. fejezet). Nem törölve, csak jelezve.
+
+**A `/query` és `/refund` válasz-DTO-k dokumentált, de ki nem olvasott mezői.** (Task 13, 2026-08-30.) `resultCode`, `finishDate`, `remainingTotal` a `Transaction`-ből, `refundStatus`/`refunds[]` a `QueryResponse`-ból (ha `refunds: true`), `currency`/`refundTotal`/`remainingTotal` a `RefundResponse`-ból — mind dokumentált, egyik sincs kiolvasva (részletek: 7. fejezet). Talált, nem javított; a `Money`/pénznem-kezelés és a visszatérítés-utáni egyenleg lekérdezhetősége szempontjából ez a legrelevánsabb.
 
 Ha később a dokumentáció és a sandbox között további eltérés derül ki, az is ide kerül, nem egy commit-üzenetbe.
 
