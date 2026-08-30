@@ -39,7 +39,20 @@ final readonly class Money
             ));
         }
 
-        $minorUnits = (int) ($matches[2] . str_pad($fraction, $exponent, '0'));
+        $digits = $matches[2] . str_pad($fraction, $exponent, '0');
+        $minorUnits = (int) $digits;
+        $normalisedDigits = ltrim($digits, '0');
+
+        if ('' === $normalisedDigits) {
+            $normalisedDigits = '0';
+        }
+
+        if ((string) $minorUnits !== $normalisedDigits) {
+            throw new UnexpectedResponseException(sprintf(
+                'A(z) "%s" összeg túl nagy, nem fér el egész számként.',
+                $amount,
+            ));
+        }
 
         return new self('-' === $matches[1] ? -$minorUnits : $minorUnits, $currency);
     }

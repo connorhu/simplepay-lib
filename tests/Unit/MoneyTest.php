@@ -124,4 +124,23 @@ final class MoneyTest extends TestCase
         self::assertSame(-1050, $money->minorUnits);
         self::assertSame('-10.50', $money->toApiValue());
     }
+
+    public function testDecimalStringRejectsAnAmountThatOverflowsAnInteger(): void
+    {
+        $this->expectException(UnexpectedResponseException::class);
+
+        Money::fromDecimalString('99999999999999999999', Currency::HUF);
+    }
+
+    public function testApiValueRejectsAFloatThatOverflowsAnInteger(): void
+    {
+        $this->expectException(UnexpectedResponseException::class);
+
+        Money::fromApiValue(1e25, Currency::EUR);
+    }
+
+    public function testDecimalStringKeepsALeadingZero(): void
+    {
+        self::assertSame(7, Money::fromDecimalString('007', Currency::HUF)->minorUnits);
+    }
 }
