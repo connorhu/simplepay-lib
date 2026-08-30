@@ -114,18 +114,21 @@ final class StartRequestTest extends TestCase
     }
 
     /**
-     * A sandbox kontraktus-teszt (Task 13) bizonyította: a SimplePay a
-     * `start` kérésben vagy egy string `url` mezőt fogad el (egyetlen közös
-     * visszairányítási cím), vagy egy objektum `urls` mezőt a differenciált
-     * success/fail/cancel/timeout címekkel. Ez a csomag szándékosan mindig a
-     * differenciált formát küldi, ezért mindig `urls` alatt, sosem `url`
-     * alatt. A korábbi hiba az volt, hogy ezt az objektumot tévedésből az
-     * `url` (stringet váró) kulcs alá csomagoltuk — erre a sandbox 5321-es
-     * hibakóddal ("Formátumhiba / érvénytelen JSON string") válaszolt,
-     * helyesen, hiszen objektumot kapott string helyett. Nincs per-request
-     * IPN mező sem (nincs `dn` kulcs, sem itt, sem az `url` alatt): a
-     * hivatalos dokumentáció szerint az IPN cím kizárólag a kereskedői admin
-     * felületen állítható be, ezért a `Urls` osztály sem hordoz ilyen adatot.
+     * A hivatalos SimplePay dokumentáció szerint a `start` kérés vagy egy
+     * string `url` mezőt fogad el (egyetlen közös visszairányítási cím),
+     * vagy egy objektum `urls` mezőt a differenciált success/fail/cancel/
+     * timeout címekkel — és ha mindkettő jelen van, az `url` figyelmen
+     * kívül marad. Ez a csomag szándékosan mindig a differenciált formát
+     * küldi, és kizárólag azt: sosem emittál `url` kulcsot `urls` mellett,
+     * hogy ne maradjon kétséges, melyik payload-mező érvényesülne. A
+     * korábbi hiba (Task 13, sandbox kontraktus-teszttel felfedve) az volt,
+     * hogy az objektumot tévedésből az `url` (stringet váró) kulcs alá
+     * csomagoltuk — erre a sandbox 5321-es hibakóddal ("Formátumhiba /
+     * érvénytelen JSON string") válaszolt, mert `url` valódi mező, csak
+     * stringet vár, nem objektumot. Nincs per-request IPN mező sem (nincs
+     * `dn` kulcs, sem itt, sem az `url` alatt): a hivatalos dokumentáció
+     * szerint az IPN cím kizárólag a kereskedői admin felületen állítható
+     * be, ezért a `Urls` osztály sem hordoz ilyen adatot.
      */
     public function testUrlsAreSentAsAMapUnderTheUrlsKey(): void
     {
@@ -134,7 +137,8 @@ final class StartRequestTest extends TestCase
         self::assertArrayNotHasKey(
             'url',
             $payload,
-            'A csomag szándékosan a differenciált "urls" objektumot küldi, sosem az egyszerű string "url" mezőt.',
+            'A csomag kizárólag "urls"-t küldi, "url"-t soha — a dokumentáció szerint mindkettő '
+            . 'együttes jelenlétekor az "url" figyelmen kívül maradna, ami kétértelművé tenné a payloadot.',
         );
 
         $urls = $payload['urls'];
