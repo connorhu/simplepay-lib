@@ -2,5 +2,6 @@
     "errorCodes": [
         5011
     ],
+    "salt": "[REDACTED]",
     "merchant": "PUBLICTESTHUF"
 }

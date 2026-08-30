@@ -1,16 +1,27 @@
 {
+    "salt": "[REDACTED]",
     "merchant": "PUBLICTESTHUF",
     "transactions": [
         {
+            "salt": "[REDACTED]",
             "merchant": "PUBLICTESTHUF",
             "orderRef": "CONTRACT-20260830-092957-6bb7a8",
             "currency": "HUF",
             "currencyEnum": "HUF",
+            "customer": "[REDACTED]",
+            "customerEmail": "[REDACTED]",
             "language": "HU",
             "twoStep": false,
             "total": 1000,
             "shippingCost": 0,
             "discount": 0,
+            "invoice": {
+                "name": "[REDACTED]",
+                "country": "[REDACTED]",
+                "city": "[REDACTED]",
+                "zip": "[REDACTED]",
+                "address": "[REDACTED]"
+            },
             "transactionId": 509007599,
             "status": "INIT",
             "remainingTotal": 1000,

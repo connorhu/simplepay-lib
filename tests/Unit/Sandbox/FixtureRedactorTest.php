@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(FixtureRedactor::class)]
 final class FixtureRedactorTest extends TestCase
 {
-    public function testRemovesCustomerAndInvoiceFieldsAtTheTopLevel(): void
+    public function testReplacesCustomerAndInvoiceFieldValuesAtTheTopLevelButKeepsTheKeys(): void
     {
         $redacted = FixtureRedactor::redact([
             'orderRef' => 'ORDER-1',
@@ -20,20 +20,31 @@ final class FixtureRedactorTest extends TestCase
             'invoice' => ['name' => 'Teszt Elek', 'city' => 'Budapest'],
         ]);
 
-        self::assertSame(['orderRef' => 'ORDER-1'], $redacted);
+        self::assertSame([
+            'orderRef' => 'ORDER-1',
+            'customer' => FixtureRedactor::MARKER,
+            'customerEmail' => FixtureRedactor::MARKER,
+            'invoice' => [
+                'name' => FixtureRedactor::MARKER,
+                'city' => FixtureRedactor::MARKER,
+            ],
+        ], $redacted);
     }
 
-    public function testRemovesSaltAtTheTopLevel(): void
+    public function testReplacesSaltAtTheTopLevelButKeepsTheKey(): void
     {
         $redacted = FixtureRedactor::redact([
             'merchant' => 'PUBLICTESTHUF',
             'salt' => 'giMQEuUuDuLhR4aNdVl7nKfIgypkw4Ut',
         ]);
 
-        self::assertSame(['merchant' => 'PUBLICTESTHUF'], $redacted);
+        self::assertSame([
+            'merchant' => 'PUBLICTESTHUF',
+            'salt' => FixtureRedactor::MARKER,
+        ], $redacted);
     }
 
-    public function testRemovesSensitiveFieldsInsideNestedTransactions(): void
+    public function testReplacesSensitiveFieldValuesInsideNestedTransactionsButKeepsTheKeys(): void
     {
         $redacted = FixtureRedactor::redact([
             'salt' => 'top-level-salt',
@@ -52,11 +63,16 @@ final class FixtureRedactorTest extends TestCase
         ]);
 
         self::assertSame([
+            'salt' => FixtureRedactor::MARKER,
             'merchant' => 'PUBLICTESTHUF',
             'transactions' => [
                 [
+                    'salt' => FixtureRedactor::MARKER,
                     'merchant' => 'PUBLICTESTHUF',
                     'orderRef' => 'ORDER-1',
+                    'customer' => FixtureRedactor::MARKER,
+                    'customerEmail' => FixtureRedactor::MARKER,
+                    'invoice' => ['name' => FixtureRedactor::MARKER],
                     'status' => 'INIT',
                 ],
             ],
@@ -76,5 +92,18 @@ final class FixtureRedactorTest extends TestCase
             'total' => 1000,
             'currency' => 'HUF',
         ], $redacted);
+    }
+
+    public function testKeysArePresentAndDistinguishableFromAFieldNeverSentByTheApi(): void
+    {
+        // A fixture bizonyító ereje pontosan azon múlik, hogy meg lehessen
+        // különböztetni "a SimplePay nem küldte" és "mi redaktáltuk" esetét.
+        $redacted = FixtureRedactor::redact([
+            'merchant' => 'PUBLICTESTHUF',
+            'salt' => 'abc123',
+        ]);
+
+        self::assertArrayHasKey('salt', $redacted, 'A redaktált mezőnek meg kell maradnia, csak az értéke cserélődik.');
+        self::assertArrayNotHasKey('customer', $redacted, 'Egy sosem kapott mező nem jelenhet meg — se valós, se redaktált értékkel.');
     }
 }

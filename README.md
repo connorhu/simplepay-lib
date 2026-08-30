@@ -190,7 +190,7 @@ vendor/bin/phpstan analyse -c phpstan.dist.neon
 vendor/bin/ecs check
 ```
 
-A sandbox tesztek a valódi válaszokat `tests/Fixtures/sandbox/` alá írják, és a unit tesztek ezeket játsszák vissza. A `raw_*.json` fixture-ök a SimplePay nyers, byte-szintű válaszát rögzítik (érzékeny mezők — `customer`, `customerEmail`, `invoice`, `salt` — nélkül, lásd a design spec 13. fejezetét); a mellettük lévő, azonos nevű (előtag nélküli) fixture-ök a csomag saját DTO-in keresztül szerializált, ember által olvasható összefoglalók — a regressziót a nyers fixture-ök ellenőrzik, ezek nem a csomag saját szerializálását parsolnák vissza.
+A sandbox tesztek a valódi válaszokat `tests/Fixtures/sandbox/` alá írják, és a unit tesztek ezeket játsszák vissza. A `raw_*.json` fixture-ök a SimplePay nyers, byte-szintű válaszát rögzítik — az érzékeny mezők (`customer`, `customerEmail`, `invoice`, `salt`) értéke `"[REDACTED]"`-re cserélve, de a mező maga (a kulccsal együtt) megmarad, hogy a fixture bizonyítani tudja, melyik mezőt küldi ténylegesen a SimplePay (lásd a design spec 13. fejezetét); a mellettük lévő, azonos nevű (előtag nélküli) fixture-ök a csomag saját DTO-in keresztül szerializált, ember által olvasható összefoglalók — a regressziót a nyers fixture-ök ellenőrzik, ezek nem a csomag saját szerializálását parsolnák vissza.
 
 ### A nightly sandbox job — mit csinál, és mit nem
 
