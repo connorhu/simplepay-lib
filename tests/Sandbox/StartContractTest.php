@@ -28,7 +28,6 @@ final class StartContractTest extends SandboxTestCase
                 fail: 'https://example.com/vissza?e=fail',
                 cancel: 'https://example.com/vissza?e=cancel',
                 timeout: 'https://example.com/vissza?e=timeout',
-                ipn: 'https://example.com/ipn',
             ),
         ));
 

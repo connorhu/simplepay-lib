@@ -1564,6 +1564,7 @@ declare(strict_types=1);
 namespace CodeConjure\SimplePay\Tests\Unit\Request;
 
 use CodeConjure\SimplePay\Currency;
+use CodeConjure\SimplePay\Exception\ConfigurationException;
 use CodeConjure\SimplePay\Language;
 use CodeConjure\SimplePay\Money;
 use CodeConjure\SimplePay\PaymentMethod;
@@ -1585,7 +1586,6 @@ final class StartRequestTest extends TestCase
             fail: 'https://bolt.hu/vissza?e=fail',
             cancel: 'https://bolt.hu/vissza?e=cancel',
             timeout: 'https://bolt.hu/vissza?e=timeout',
-            ipn: 'https://bolt.hu/ipn',
         );
     }
 
@@ -1630,7 +1630,7 @@ final class StartRequestTest extends TestCase
 
         $totalKeyCount = self::assertNoSnakeCaseKeysRecursively($payload);
 
-        // A historikus hiba a beágyazott map-ekben (invoice, url) élt, nem a
+        // A historikus hiba a beágyazott map-ekben (invoice, urls) élt, nem a
         // felső szinten — ha a rekurzió nem néz bele azokba, ez a teszt
         // üresen futna át egy snake_case kulcson is. Ezért bizonyítjuk, hogy
         // ténylegesen több kulcsot vizsgáltunk meg, mint amennyi a felső
@@ -1672,16 +1672,33 @@ final class StartRequestTest extends TestCase
         self::assertArrayNotHasKey('sdkVersion', $payload);
     }
 
-    public function testUrlsAreSentAsAMapAndTheIpnGoesOutAsDn(): void
+    /**
+     * A sandbox kontraktus-teszt (Task 13) bizonyította: a SimplePay a
+     * differenciált visszairányítási címeket a `urls` (többes szám) kulcs
+     * alatt várja — az egyes számú `url` kulcs 5321-es hibakóddal
+     * ("Formátumhiba / érvénytelen JSON string") elutasításra kerül. Nincs
+     * per-request IPN mező sem (nincs `dn` kulcs): a hivatalos dokumentáció
+     * szerint az IPN cím kizárólag a kereskedői admin felületen állítható
+     * be, ezért a `Urls` osztály sem hordoz ilyen adatot.
+     */
+    public function testUrlsAreSentAsAMapUnderTheUrlsKey(): void
     {
-        $urls = self::request()->toPayload()['url'];
+        $payload = self::request()->toPayload();
+
+        self::assertArrayNotHasKey('url', $payload, 'Az egyes számú "url" kulcs 5321-es hibakóddal utasítódik el.');
+
+        $urls = $payload['urls'];
 
         self::assertIsArray($urls);
+        self::assertSame(
+            ['success', 'fail', 'cancel', 'timeout'],
+            array_keys($urls),
+            'Nincs per-request IPN mező — az IPN címet a kereskedői admin felület adja.',
+        );
         self::assertSame('https://bolt.hu/vissza?e=success', $urls['success']);
         self::assertSame('https://bolt.hu/vissza?e=fail', $urls['fail']);
         self::assertSame('https://bolt.hu/vissza?e=cancel', $urls['cancel']);
         self::assertSame('https://bolt.hu/vissza?e=timeout', $urls['timeout']);
-        self::assertSame('https://bolt.hu/ipn', $urls['dn']);
     }
 
     public function testInvoiceIsNested(): void
@@ -1737,6 +1754,33 @@ final class StartRequestTest extends TestCase
 
         self::assertSame(['CARD', 'WIRE'], $request->toPayload()['methods']);
         self::assertSame('EN', $request->toPayload()['language']);
+    }
+
+    public function testInvoiceRejectsABlankRequiredField(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/zip/');
+
+        new Invoice(
+            name: 'Teszt Elek',
+            country: 'HU',
+            city: 'Budapest',
+            zip: '',
+            address: 'Fő utca 1.',
+        );
+    }
+
+    public function testInvoiceKeepsAZeroPostcode(): void
+    {
+        $invoice = new Invoice(
+            name: 'Teszt Elek',
+            country: 'HU',
+            city: 'Budapest',
+            zip: '0',
+            address: 'Fő utca 1.',
+        );
+
+        self::assertSame('0', $invoice->toPayload()['zip']);
     }
 }
 ```
@@ -1924,9 +1968,18 @@ declare(strict_types=1);
 namespace CodeConjure\SimplePay\Request;
 
 /**
- * Mind az öt cím kötelező. Az `ipn` a SimplePay felé `dn` néven megy ki — ez az
- * a cím, ahová a fizetési értesítés érkezik; enélkül a bolt sosem értesül a
- * fizetés véglegesüléséről.
+ * Mind a négy cím kötelező, és a SimplePay felé a `start` kérés `urls`
+ * map-jeként mennek ki (nem `url` — az egyes szám 5321-es hibakóddal
+ * elutasításra kerül).
+ *
+ * Sandbox kontraktus-teszttel megerősítve (Task 13): a hivatalos SimplePay
+ * v2 dokumentáció szerint az IPN (fizetési értesítés) címét NEM a `start`
+ * kérés hordozza — nincs ilyen mező a dokumentált API-ban. Az IPN cím
+ * kizárólag a kereskedői admin felületen, a "Technikai adatok" fülön
+ * állítható be, fiókszinten. Ne keress ide paramétert az IPN cím
+ * megadására — nincs ilyen, és korábban egy `ipn`/`dn` mező itt pontosan
+ * ezt a téves benyomást keltette (a sandbox csendben eldobta, sosem
+ * routolt vele semmit).
  */
 final readonly class Urls
 {
@@ -1935,7 +1988,6 @@ final readonly class Urls
         public string $fail,
         public string $cancel,
         public string $timeout,
-        public string $ipn,
     ) {
     }
 
@@ -1947,7 +1999,6 @@ final readonly class Urls
             'fail' => $this->fail,
             'cancel' => $this->cancel,
             'timeout' => $this->timeout,
-            'dn' => $this->ipn,
         ];
     }
 }
@@ -1998,7 +2049,7 @@ final readonly class StartRequest
                 $this->methods,
             ),
             'invoice' => $this->invoice->toPayload(),
-            'url' => $this->urls->toPayload(),
+            'urls' => $this->urls->toPayload(),
         ];
 
         if (null !== $this->timeout) {
@@ -3008,7 +3059,6 @@ final class ClientTransportTest extends TestCase
                 'https://bolt.hu/f',
                 'https://bolt.hu/c',
                 'https://bolt.hu/t',
-                'https://bolt.hu/ipn',
             ),
         );
     }
@@ -4217,7 +4267,9 @@ use CodeConjure\SimplePay\Money;
 use CodeConjure\SimplePay\Request\Invoice;
 use CodeConjure\SimplePay\Request\StartRequest;
 use CodeConjure\SimplePay\Request\Urls;
+use PHPUnit\Framework\Attributes\Group;
 
+#[Group('sandbox')]
 final class StartContractTest extends SandboxTestCase
 {
     public function testTheSandboxAcceptsOurSignatureAndReturnsAPaymentUrl(): void
@@ -4234,7 +4286,6 @@ final class StartContractTest extends SandboxTestCase
                 fail: 'https://example.com/vissza?e=fail',
                 cancel: 'https://example.com/vissza?e=cancel',
                 timeout: 'https://example.com/vissza?e=timeout',
-                ipn: 'https://example.com/ipn',
             ),
         ));
 
@@ -4274,7 +4325,9 @@ use CodeConjure\SimplePay\Request\QueryRequest;
 use CodeConjure\SimplePay\Request\StartRequest;
 use CodeConjure\SimplePay\Request\Urls;
 use CodeConjure\SimplePay\TransactionStatus;
+use PHPUnit\Framework\Attributes\Group;
 
+#[Group('sandbox')]
 final class QueryContractTest extends SandboxTestCase
 {
     public function testAFreshTransactionCanBeQueriedBackByOrderRef(): void
@@ -4292,7 +4345,6 @@ final class QueryContractTest extends SandboxTestCase
                 fail: 'https://example.com/vissza?e=fail',
                 cancel: 'https://example.com/vissza?e=cancel',
                 timeout: 'https://example.com/vissza?e=timeout',
-                ipn: 'https://example.com/ipn',
             ),
         ));
 
@@ -4473,7 +4525,6 @@ $response = $client->start(new StartRequest(
         fail: 'https://bolt.hu/vissza?e=fail',
         cancel: 'https://bolt.hu/vissza?e=cancel',
         timeout: 'https://bolt.hu/vissza?e=timeout',
-        ipn: 'https://bolt.hu/ipn',
     ),
 ));
 

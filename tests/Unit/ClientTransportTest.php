@@ -73,7 +73,6 @@ final class ClientTransportTest extends TestCase
                 'https://bolt.hu/f',
                 'https://bolt.hu/c',
                 'https://bolt.hu/t',
-                'https://bolt.hu/ipn',
             ),
         );
     }

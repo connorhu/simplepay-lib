@@ -27,7 +27,6 @@ final class StartRequestTest extends TestCase
             fail: 'https://bolt.hu/vissza?e=fail',
             cancel: 'https://bolt.hu/vissza?e=cancel',
             timeout: 'https://bolt.hu/vissza?e=timeout',
-            ipn: 'https://bolt.hu/ipn',
         );
     }
 
@@ -72,7 +71,7 @@ final class StartRequestTest extends TestCase
 
         $totalKeyCount = self::assertNoSnakeCaseKeysRecursively($payload);
 
-        // A historikus hiba a beágyazott map-ekben (invoice, url) élt, nem a
+        // A historikus hiba a beágyazott map-ekben (invoice, urls) élt, nem a
         // felső szinten — ha a rekurzió nem néz bele azokba, ez a teszt
         // üresen futna át egy snake_case kulcson is. Ezért bizonyítjuk, hogy
         // ténylegesen több kulcsot vizsgáltunk meg, mint amennyi a felső
@@ -118,20 +117,29 @@ final class StartRequestTest extends TestCase
      * A sandbox kontraktus-teszt (Task 13) bizonyította: a SimplePay a
      * differenciált visszairányítási címeket a `urls` (többes szám) kulcs
      * alatt várja — az egyes számú `url` kulcs 5321-es hibakóddal
-     * ("Formátumhiba / érvénytelen JSON string") elutasításra kerül. A `dn`
-     * mezőt a sandbox csendben figyelmen kívül hagyja, tehát a jelenlétét
-     * legfeljebb ártalmatlannak, nem pedig működőnek tekintjük.
+     * ("Formátumhiba / érvénytelen JSON string") elutasításra kerül. Nincs
+     * per-request IPN mező sem (nincs `dn` kulcs): a hivatalos dokumentáció
+     * szerint az IPN cím kizárólag a kereskedői admin felületen állítható
+     * be, ezért a `Urls` osztály sem hordoz ilyen adatot.
      */
-    public function testUrlsAreSentAsAMapUnderTheUrlsKeyAndTheIpnGoesOutAsDn(): void
+    public function testUrlsAreSentAsAMapUnderTheUrlsKey(): void
     {
-        $urls = self::request()->toPayload()['urls'];
+        $payload = self::request()->toPayload();
+
+        self::assertArrayNotHasKey('url', $payload, 'Az egyes számú "url" kulcs 5321-es hibakóddal utasítódik el.');
+
+        $urls = $payload['urls'];
 
         self::assertIsArray($urls);
+        self::assertSame(
+            ['success', 'fail', 'cancel', 'timeout'],
+            array_keys($urls),
+            'Nincs per-request IPN mező — az IPN címet a kereskedői admin felület adja.',
+        );
         self::assertSame('https://bolt.hu/vissza?e=success', $urls['success']);
         self::assertSame('https://bolt.hu/vissza?e=fail', $urls['fail']);
         self::assertSame('https://bolt.hu/vissza?e=cancel', $urls['cancel']);
         self::assertSame('https://bolt.hu/vissza?e=timeout', $urls['timeout']);
-        self::assertSame('https://bolt.hu/ipn', $urls['dn']);
     }
 
     public function testInvoiceIsNested(): void

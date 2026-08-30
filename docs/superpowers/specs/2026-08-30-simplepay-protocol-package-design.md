@@ -48,7 +48,8 @@ A `egyhazzene.hu/bolt` appban ma `src/Components/Payum/SimplePay/` alatt él egy
 
 8. A `/query` válasz `transactions[]` tömböt ad, a státusz azon belül van; mindkettő a legfelső szinten keresi, tehát sosem találja.
 9. Az IPN-re nem megy vissza a kötelező `receiveDate`-tel kiegészített, aláírt válasz, ezért a SimplePay újraküldözgetné az értesítést.
-10. Az `urls` blokk (`success`/`fail`/`cancel`/`timeout`/`dn`) hiányzik; az app egyetlen `url` mezőt küld, és az IPN célcím (`dn`) sosem megy ki.
+10. Az `urls` blokk (`success`/`fail`/`cancel`/`timeout`) hiányzik; az app egyetlen `url` mezőt küld.
+    > **Korrekció (Task 13, élő sandbox kontraktus-teszt, 2026-08-30):** ez a pont eredetileg ötödik mezőként `dn`-t is felsorolta, és azt állította, hogy „az IPN célcím (`dn`) sosem megy ki”. Ez a fele téves volt: a SimplePay v2 API-ban nincs per-request IPN-cím mező, tehát egyik felmért implementáció sem küldhetett volna ilyet — nincs mit hiányolni. Az IPN célcím kizárólag a kereskedői admin felületen, fiókszinten állítható be. A téves feltevés a jelen csomag saját `Urls`/`StartRequest` tervébe is átkerült (lásd 7. fejezet): egy nemlétező `ipn`/`dn` mezőt vezetett be, miközben az `urls` kulcsot tévesen egyes számban (`url`) írta a `StartRequest.toPayload()`. A hibát csak az élő sandbox buktatta le — a `url` kulcs miatt a szolgáltatás 5321-es hibakóddal („Formátumhiba / érvénytelen JSON string”) utasította el a start-kérést, aláírási hiba nélkül. A fenti lista első fele — hogy a differenciált `urls` blokk szükséges és hiányzott — helytálló maradt; csak az `ipn`/`dn` állítás lett törölve ebből a korrekcióból, mert nem volt igaz.
 
 **A közös gyökér:** egyik implementáció sem beszélt soha az igazi SimplePay sandboxszal. Mindkettő mockolt HTTP-kliens ellen tesztelt, így a mockba beleírt téves feltevés zöld tesztként jelent meg. A jelen csomag tesztstratégiája (13. fejezet) elsősorban ezt a gyökeret célozza.
 
@@ -259,7 +260,6 @@ final readonly class Urls
         public string $fail,
         public string $cancel,
         public string $timeout,
-        public string $ipn,        // a SimplePay felé "dn" néven megy ki
     ) {}
 }
 
@@ -278,7 +278,7 @@ final readonly class Invoice
 }
 ```
 
-Az `Urls` mind az öt címet kötelezővé teszi. Az app ma egyetlen `url` mezőt küld, és az IPN célcím sosem megy ki — ez a szerkezet ezt a hibát leírhatatlanná teszi.
+Az `Urls` mind a négy címet kötelezővé teszi, és a `start` kérés `urls` map-jeként mennek ki — nem `url` (egyes szám), amit az app ma küld, és amit a SimplePay sandbox 5321-es hibakóddal ("Formátumhiba / érvénytelen JSON string") utasít el. **Nincs per-request IPN-cím mező.** A SimplePay v2 API-ban az IPN célcímet a kereskedői admin felület ("Technikai adatok" fül) adja meg, fiókszinten — ezt az osztályt nem terheli meg vele. (Ez a bekezdés eredetileg öt kötelező címet és egy `ipn`/`dn` mezőt írt elő; a Task 13 élő sandbox ellen futtatott kontraktus-tesztje bizonyította, hogy ilyen mező nincs a dokumentált API-ban — lásd a 2. fejezet 10. pontjának korrekcióját.)
 
 ### QueryRequest és RefundRequest
 
@@ -383,7 +383,7 @@ Három lépés, ebben a sorrendben:
 
 ## 9. IPN
 
-A SimplePay a `dn` címre POST-ol JSON-t `Signature` fejléccel, és elvárja, hogy a kapott JSON-t `receiveDate` mezővel kiegészítve, aláírva visszaküldd. Amíg ez nem megy vissza, a SimplePay úgy veszi, nem kaptuk meg, és újraküldi.
+A SimplePay a kereskedői admin felületen ("Technikai adatok" fül, fiókszintű beállítás — nincs per-request IPN-cím mező, lásd 7. fejezet) beállított IPN-címre POST-ol JSON-t `Signature` fejléccel, és elvárja, hogy a kapott JSON-t `receiveDate` mezővel kiegészítve, aláírva visszaküldd. Amíg ez nem megy vissza, a SimplePay úgy veszi, nem kaptuk meg, és újraküldi.
 
 ```php
 $confirmation = $client->ipn($rawBody, $signatureHeader);
@@ -565,9 +565,11 @@ A `README.md` állandó szekciója, ez adja a fogódzót a későbbi bővítésh
 
 ## 16. Ismert bizonytalanságok
 
-Ez a szekció is a README része, nem csak a specé. Jelenleg egy tétel:
+Ez a szekció is a README része, nem csak a specé. Jelenleg két tétel:
 
 **A `receiveDate` pontos formátuma.** Az IPN-hez a SimplePay hív minket, ahhoz kívülről elérhető URL kell — ezt egy csomag tesztsuite-ja nem tudja előállítani. Amit az 1. fázisban tesztelni tudunk: az aláírás-ellenőrzést és a válasz felépítését egy kézzel összerakott üzeneten. A formátumot a 2. fázis zárja le, amikor a Payum- és Sylius-réteg már a valódi boltban fut: az első igazi sandbox-fizetés IPN-jét fixture-ként rögzítjük.
+
+**Egy sikeres jóváírás (`refund`) válaszának pontos alakja.** (Task 13, 2026-08-30.) A `RefundResponse::fromPayload()` mezői a dokumentáció alapján készültek, de sandbox ellen még sosem lettek ellenőrizve élő adaton. Jóváírni csak egy már befejezett fizetést lehet, azt pedig a kontraktus-teszt emberi kattintás nélkül, a fizetőoldalon átmenve nem tudja előállítani — ugyanaz a szerkezeti korlát, mint a `receiveDate`-nél. A Task 13 sandbox kontraktus-tesztje ezért csak az elutasítás alakját (`errorCodes`) tudta rögzíteni (`tests/Fixtures/sandbox/refund_error.json`), a sikeres válasz alakját nem. A 2. fázisban, az első valódi sandbox-fizetés jóváírásakor ezt is fixture-ként kell rögzíteni, és a `FixtureConformanceTest`-nek a `refund.json`-on át kell ereszteni a `RefundResponse::fromPayload()`-ot.
 
 Ha később a dokumentáció és a sandbox között további eltérés derül ki, az is ide kerül, nem egy commit-üzenetbe.
 
