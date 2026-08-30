@@ -115,18 +115,27 @@ final class StartRequestTest extends TestCase
 
     /**
      * A sandbox kontraktus-teszt (Task 13) bizonyította: a SimplePay a
-     * differenciált visszairányítási címeket a `urls` (többes szám) kulcs
-     * alatt várja — az egyes számú `url` kulcs 5321-es hibakóddal
-     * ("Formátumhiba / érvénytelen JSON string") elutasításra kerül. Nincs
-     * per-request IPN mező sem (nincs `dn` kulcs): a hivatalos dokumentáció
-     * szerint az IPN cím kizárólag a kereskedői admin felületen állítható
-     * be, ezért a `Urls` osztály sem hordoz ilyen adatot.
+     * `start` kérésben vagy egy string `url` mezőt fogad el (egyetlen közös
+     * visszairányítási cím), vagy egy objektum `urls` mezőt a differenciált
+     * success/fail/cancel/timeout címekkel. Ez a csomag szándékosan mindig a
+     * differenciált formát küldi, ezért mindig `urls` alatt, sosem `url`
+     * alatt. A korábbi hiba az volt, hogy ezt az objektumot tévedésből az
+     * `url` (stringet váró) kulcs alá csomagoltuk — erre a sandbox 5321-es
+     * hibakóddal ("Formátumhiba / érvénytelen JSON string") válaszolt,
+     * helyesen, hiszen objektumot kapott string helyett. Nincs per-request
+     * IPN mező sem (nincs `dn` kulcs, sem itt, sem az `url` alatt): a
+     * hivatalos dokumentáció szerint az IPN cím kizárólag a kereskedői admin
+     * felületen állítható be, ezért a `Urls` osztály sem hordoz ilyen adatot.
      */
     public function testUrlsAreSentAsAMapUnderTheUrlsKey(): void
     {
         $payload = self::request()->toPayload();
 
-        self::assertArrayNotHasKey('url', $payload, 'Az egyes számú "url" kulcs 5321-es hibakóddal utasítódik el.');
+        self::assertArrayNotHasKey(
+            'url',
+            $payload,
+            'A csomag szándékosan a differenciált "urls" objektumot küldi, sosem az egyszerű string "url" mezőt.',
+        );
 
         $urls = $payload['urls'];
 

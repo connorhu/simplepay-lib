@@ -5,18 +5,31 @@ declare(strict_types=1);
 namespace CodeConjure\SimplePay\Request;
 
 /**
- * Mind a négy cím kötelező, és a SimplePay felé a `start` kérés `urls`
- * map-jeként mennek ki (nem `url` — az egyes szám 5321-es hibakóddal
- * elutasításra kerül).
+ * Mind a négy cím kötelező. A SimplePay hivatalos API-ja kétféle formát
+ * fogad el a `start` kérésben: egy string `url` mezőt (egyetlen közös
+ * visszairányítási cím minden kimenetelre), vagy egy objektum `urls`
+ * mezőt a differenciált success/fail/cancel/timeout címekkel. Ez a
+ * csomag szándékosan mindig a differenciált formát küldi — a hívónak
+ * többet ér tudni, hogy a vásárló sikeresen fizetett, elutasították,
+ * megszakította vagy időtúllépés érte, mint a közös URL egyszerűsége —
+ * ezért a payload mindig `urls` alatt megy ki, sosem `url` alatt.
  *
- * Sandbox kontraktus-teszttel megerősítve (Task 13): a hivatalos SimplePay
- * v2 dokumentáció szerint az IPN (fizetési értesítés) címét NEM a `start`
- * kérés hordozza — nincs ilyen mező a dokumentált API-ban. Az IPN cím
- * kizárólag a kereskedői admin felületen, a "Technikai adatok" fülön
- * állítható be, fiókszinten. Ne keress ide paramétert az IPN cím
- * megadására — nincs ilyen, és korábban egy `ipn`/`dn` mező itt pontosan
- * ezt a téves benyomást keltette (a sandbox csendben eldobta, sosem
- * routolt vele semmit).
+ * FONTOS: `url` nem hiányzó vagy érvénytelen kulcs a SimplePay API-ban —
+ * ez az egyszerű, string alakú forma neve. A korábbi hiba (Task 13,
+ * sandbox kontraktus-teszttel felfedve) pontosan az volt, hogy ezt az
+ * objektumot tévedésből az `url` kulcs alá csomagoltuk, egy stringet váró
+ * mezőbe. A SimplePay erre 5321-es hibakóddal ("Formátumhiba / érvénytelen
+ * JSON string") válaszolt — helyesen, hiszen objektumot kapott string
+ * helyett. A javítás nem egy nemlétező kulcs helyesre cserélése volt,
+ * hanem a differenciált formához tartozó, helyes kulcs (`urls`) használata.
+ *
+ * Nincs per-request IPN-cím mező sem (sem `url`, sem `urls` alatt, és
+ * semmilyen más néven): a hivatalos dokumentáció szerint az IPN (fizetési
+ * értesítés) címét NEM a `start` kérés hordozza, azt a kereskedői admin
+ * felületen, a "Technikai adatok" fülön kell beállítani, fiókszinten. Ne
+ * keress ide paramétert az IPN cím megadására — nincs ilyen, és korábban
+ * egy `ipn`/`dn` mező itt pontosan ezt a téves benyomást keltette (a
+ * sandbox csendben eldobta, sosem routolt vele semmit).
  */
 final readonly class Urls
 {
