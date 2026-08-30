@@ -7,7 +7,6 @@ namespace CodeConjure\SimplePay\Tests\Sandbox;
 use CodeConjure\SimplePay\Currency;
 use CodeConjure\SimplePay\Exception\RequestException;
 use CodeConjure\SimplePay\Money;
-use CodeConjure\SimplePay\Request\QueryRequest;
 use CodeConjure\SimplePay\Request\RefundRequest;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -38,15 +37,5 @@ final class RefundContractTest extends SandboxTestCase
                 'message' => $exception->getMessage(),
             ]);
         }
-    }
-
-    public function testQueryingWithRefundsFlagIsAccepted(): void
-    {
-        $response = $this->client()->query(new QueryRequest(
-            orderRefs: ['NEM-LETEZO-' . bin2hex(random_bytes(4))],
-            refunds: true,
-        ));
-
-        self::assertSame(0, $response->totalCount);
     }
 }

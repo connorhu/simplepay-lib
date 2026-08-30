@@ -34,7 +34,7 @@ final class QueryContractTest extends SandboxTestCase
             ),
         ));
 
-        $response = $client->query(new QueryRequest(orderRefs: [$orderRef], detailed: true));
+        $response = $client->query(new QueryRequest(orderRefs: [$orderRef]));
 
         self::assertGreaterThanOrEqual(1, $response->totalCount);
 
@@ -50,10 +50,13 @@ final class QueryContractTest extends SandboxTestCase
                     'orderRef' => $item->orderRef,
                     'transactionId' => $item->transactionId,
                     'status' => $item->status->value,
+                    'resultCode' => $item->resultCode,
                     'total' => $item->total?->toApiValue(),
-                    'currency' => $item->total?->currency->value,
+                    'remainingTotal' => $item->remainingTotal?->toApiValue(),
+                    'currency' => $item->total?->currency->value ?? $item->remainingTotal?->currency->value,
                     'method' => $item->method?->value,
                     'paymentDate' => $item->paymentDate?->format(\DateTimeInterface::ATOM),
+                    'finishDate' => $item->finishDate?->format(\DateTimeInterface::ATOM),
                 ],
                 $response->transactions,
             ),

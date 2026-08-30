@@ -28,20 +28,32 @@ final class QueryRequestTest extends TestCase
         self::assertArrayNotHasKey('transactionIds', $payload);
     }
 
-    public function testFlagsAreOmittedWhenFalse(): void
+    /**
+     * A `refunds` kapcsoló szándékosan hiányzik a `QueryRequest`-ből (lásd
+     * az osztály docblockját): a hozott extra mezőket a válasz-oldal nem
+     * olvassa ki, tehát a kapcsoló bekapcsolása néma ígéret lenne. Ez a
+     * teszt lepinneli, hogy a payload sosem tartalmazhat ilyen kulcsot.
+     */
+    public function testPayloadNeverCarriesTheRefundsFlag(): void
     {
         $payload = new QueryRequest(orderRefs: ['ORDER-1'])->toPayload();
 
-        self::assertArrayNotHasKey('detailed', $payload);
         self::assertArrayNotHasKey('refunds', $payload);
     }
 
-    public function testFlagsAreSentWhenTrue(): void
+    /**
+     * A `detailed: true`-t a `toPayload()` mindig kiküldi, nem publikus
+     * opcióként, hanem mert enélkül a SimplePay a `total`/`remainingTotal`
+     * mezőket `currency` nélkül küldi vissza (élő sandboxon megfigyelve,
+     * Task 13) — a `Transaction::fromPayload()` pedig jogosan hangos hibát
+     * dob egy pénznem nélküli összegre. Ez a teszt lepinneli, hogy ez a
+     * belső részlet nem vész el egy jövőbeli refaktornál.
+     */
+    public function testDetailedIsAlwaysSentToGuaranteeCurrency(): void
     {
-        $payload = new QueryRequest(orderRefs: ['ORDER-1'], detailed: true, refunds: true)->toPayload();
+        $payload = new QueryRequest(orderRefs: ['ORDER-1'])->toPayload();
 
         self::assertTrue($payload['detailed']);
-        self::assertTrue($payload['refunds']);
     }
 
     public function testAnEmptyQueryIsRejected(): void

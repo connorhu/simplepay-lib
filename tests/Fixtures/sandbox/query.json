@@ -3,13 +3,16 @@
     "transactions": [
         {
             "merchant": "PUBLICTESTHUF",
-            "orderRef": "CONTRACT-20260830-084248-2cdb16",
-            "transactionId": "509007576",
+            "orderRef": "CONTRACT-20260830-090607-0e8603",
+            "transactionId": "509007584",
             "status": "INIT",
+            "resultCode": null,
             "total": "1000",
+            "remainingTotal": "1000",
             "currency": "HUF",
             "method": null,
-            "paymentDate": "2026-08-30T10:42:48+02:00"
+            "paymentDate": "2026-08-30T11:06:07+02:00",
+            "finishDate": null
         }
     ]
 }

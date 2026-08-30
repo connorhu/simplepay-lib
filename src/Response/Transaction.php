@@ -19,27 +19,29 @@ final readonly class Transaction
         public string $transactionId,
         public TransactionStatus $status,
         public ?Money $total = null,
+        public ?Money $remainingTotal = null,
         public ?\DateTimeImmutable $paymentDate = null,
+        public ?\DateTimeImmutable $finishDate = null,
         public ?PaymentMethod $method = null,
+        public ?string $resultCode = null,
     ) {
     }
 
     /** @param array<string, mixed> $payload */
     public static function fromPayload(array $payload): self
     {
-        $total = null;
         $currencyCode = PayloadReader::nullableString($payload, 'currency');
-        // isset() kezeli az explicit `"total": null` és a hiányzó kulcs esetét egyformán —
-        // a SimplePay nem szokott explicit nullt küldeni, így ez a megkülönböztetés
-        // szándékosan nem számít itt.
+        // isset() kezeli az explicit `null` és a hiányzó kulcs esetét egyformán mindkét
+        // összeg-mezőnél — a SimplePay nem szokott explicit nullt küldeni, így ez a
+        // megkülönböztetés szándékosan nem számít itt.
         $hasTotal = isset($payload['total']);
+        $hasRemainingTotal = isset($payload['remainingTotal']);
 
-        if (null !== $currencyCode && $hasTotal) {
-            $total = Money::fromApiValue(
-                PayloadReader::scalarAmount($payload, 'total'),
-                Currency::fromApi($currencyCode),
-            );
-        } elseif (null === $currencyCode && $hasTotal) {
+        $currency = null;
+
+        if (null !== $currencyCode) {
+            $currency = Currency::fromApi($currencyCode);
+        } elseif ($hasTotal || $hasRemainingTotal) {
             $transactionId = PayloadReader::nullableString($payload, 'transactionId');
 
             throw new UnexpectedResponseException(sprintf(
@@ -55,9 +57,16 @@ final readonly class Transaction
             orderRef: PayloadReader::string($payload, 'orderRef'),
             transactionId: PayloadReader::string($payload, 'transactionId'),
             status: TransactionStatus::fromApi(PayloadReader::string($payload, 'status')),
-            total: $total,
+            total: ($hasTotal && null !== $currency)
+                ? Money::fromApiValue(PayloadReader::scalarAmount($payload, 'total'), $currency)
+                : null,
+            remainingTotal: ($hasRemainingTotal && null !== $currency)
+                ? Money::fromApiValue(PayloadReader::scalarAmount($payload, 'remainingTotal'), $currency)
+                : null,
             paymentDate: PayloadReader::nullableDateTime($payload, 'paymentDate'),
+            finishDate: PayloadReader::nullableDateTime($payload, 'finishDate'),
             method: null === $method ? null : PaymentMethod::fromApi($method),
+            resultCode: PayloadReader::nullableString($payload, 'resultCode'),
         );
     }
 }

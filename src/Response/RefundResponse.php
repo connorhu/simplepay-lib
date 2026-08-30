@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace CodeConjure\SimplePay\Response;
 
+use CodeConjure\SimplePay\Currency;
 use CodeConjure\SimplePay\Internal\PayloadReader;
-use CodeConjure\SimplePay\TransactionStatus;
+use CodeConjure\SimplePay\Money;
 
 final readonly class RefundResponse
 {
@@ -13,22 +14,24 @@ final readonly class RefundResponse
         public string $merchant,
         public string $orderRef,
         public string $transactionId,
+        public Money $refundTotal,
+        public Money $remainingTotal,
         public ?string $refundTransactionId = null,
-        public ?TransactionStatus $status = null,
     ) {
     }
 
     /** @param array<string, mixed> $payload */
     public static function fromPayload(array $payload): self
     {
-        $status = PayloadReader::nullableString($payload, 'status');
+        $currency = Currency::fromApi(PayloadReader::string($payload, 'currency'));
 
         return new self(
             merchant: PayloadReader::string($payload, 'merchant'),
             orderRef: PayloadReader::string($payload, 'orderRef'),
             transactionId: PayloadReader::string($payload, 'transactionId'),
+            refundTotal: Money::fromApiValue(PayloadReader::scalarAmount($payload, 'refundTotal'), $currency),
+            remainingTotal: Money::fromApiValue(PayloadReader::scalarAmount($payload, 'remainingTotal'), $currency),
             refundTransactionId: PayloadReader::nullableString($payload, 'refundTransactionId'),
-            status: null === $status ? null : TransactionStatus::fromApi($status),
         );
     }
 }

@@ -105,9 +105,11 @@ final class ClientOperationsTest extends TestCase
         $this->httpClient->addResponse($this->signedResponse([
             'merchant' => 'PUBLICTESTHUF',
             'orderRef' => 'ORDER-1',
+            'currency' => 'HUF',
             'transactionId' => 99999999,
             'refundTransactionId' => 88888888,
-            'status' => 'REFUND',
+            'refundTotal' => 1000,
+            'remainingTotal' => 0,
         ]));
 
         $response = $this->client()->refund(new RefundRequest(
@@ -119,6 +121,8 @@ final class ClientOperationsTest extends TestCase
         self::assertNotFalse($request);
         self::assertSame('https://sandbox.simplepay.hu/payment/v2/refund', (string) $request->getUri());
         self::assertSame('88888888', $response->refundTransactionId);
+        self::assertSame(1000, $response->refundTotal->minorUnits);
+        self::assertSame(0, $response->remainingTotal->minorUnits);
     }
 
     public function testRefundSendsRefundTotal(): void
@@ -126,7 +130,10 @@ final class ClientOperationsTest extends TestCase
         $this->httpClient->addResponse($this->signedResponse([
             'merchant' => 'PUBLICTESTHUF',
             'orderRef' => 'ORDER-1',
+            'currency' => 'HUF',
             'transactionId' => 99999999,
+            'refundTotal' => 500,
+            'remainingTotal' => 0,
         ]));
 
         $this->client()->refund(new RefundRequest(

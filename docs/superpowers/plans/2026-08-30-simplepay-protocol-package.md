@@ -1831,20 +1831,32 @@ final class QueryRequestTest extends TestCase
         self::assertArrayNotHasKey('transactionIds', $payload);
     }
 
-    public function testFlagsAreOmittedWhenFalse(): void
+    /**
+     * A `refunds` kapcsoló szándékosan hiányzik a `QueryRequest`-ből (lásd
+     * az osztály docblockját): a hozott extra mezőket a válasz-oldal nem
+     * olvassa ki, tehát a kapcsoló bekapcsolása néma ígéret lenne. Ez a
+     * teszt lepinneli, hogy a payload sosem tartalmazhat ilyen kulcsot.
+     */
+    public function testPayloadNeverCarriesTheRefundsFlag(): void
     {
         $payload = new QueryRequest(orderRefs: ['ORDER-1'])->toPayload();
 
-        self::assertArrayNotHasKey('detailed', $payload);
         self::assertArrayNotHasKey('refunds', $payload);
     }
 
-    public function testFlagsAreSentWhenTrue(): void
+    /**
+     * A `detailed: true`-t a `toPayload()` mindig kiküldi, nem publikus
+     * opcióként, hanem mert enélkül a SimplePay a `total`/`remainingTotal`
+     * mezőket `currency` nélkül küldi vissza (élő sandboxon megfigyelve,
+     * Task 13) — a `Transaction::fromPayload()` pedig jogosan hangos hibát
+     * dob egy pénznem nélküli összegre. Ez a teszt lepinneli, hogy ez a
+     * belső részlet nem vész el egy jövőbeli refaktornál.
+     */
+    public function testDetailedIsAlwaysSentToGuaranteeCurrency(): void
     {
-        $payload = new QueryRequest(orderRefs: ['ORDER-1'], detailed: true, refunds: true)->toPayload();
+        $payload = new QueryRequest(orderRefs: ['ORDER-1'])->toPayload();
 
         self::assertTrue($payload['detailed']);
-        self::assertTrue($payload['refunds']);
     }
 
     public function testAnEmptyQueryIsRejected(): void
@@ -1852,6 +1864,20 @@ final class QueryRequestTest extends TestCase
         $this->expectException(ConfigurationException::class);
 
         new QueryRequest();
+    }
+
+    public function testAListOfOnlyBlankTransactionIdsIsRejected(): void
+    {
+        $this->expectException(ConfigurationException::class);
+
+        new QueryRequest(transactionIds: ['']);
+    }
+
+    public function testBlankEntriesAreDroppedButUsableOnesSurvive(): void
+    {
+        $payload = new QueryRequest(orderRefs: ['', 'ORDER-1'])->toPayload();
+
+        self::assertSame(['ORDER-1'], $payload['orderRefs']);
     }
 }
 ```
@@ -2108,6 +2134,35 @@ use CodeConjure\SimplePay\Exception\ConfigurationException;
 
 /**
  * A SimplePay listát vár, nem skalárt: `transactionIds` és `orderRefs`.
+ *
+ * A `detailed` és `refunds` kérési kapcsolók szándékosan hiányoznak a
+ * publikus felületről. Mindkettő a dokumentáció szerint valódi, meglévő
+ * SimplePay funkció, de az általuk hozott extra mezőket (`customer`,
+ * `customerEmail`, `invoice`, `delivery`, `twoStep`, `shippingCost`,
+ * `discount`, illetve `refundStatus`/`refunds[]`) a `Transaction`/
+ * `QueryResponse` jelenleg nem olvassa ki — egy publikus kapcsoló így néma
+ * ígéret lenne. A `refunds` alakja emellett sandboxból sosem figyelhető
+ * meg (jóváírás csak befejezett fizetésen indítható, azt a tesztsuite
+ * emberi kattintás nélkül nem tudja előállítani); a `detailed` alakja
+ * megfigyelhető volt (Task 13), de egy nem dokumentált mezőt
+ * (`currencyEnum`) is tartalmazott, és a teljes modellezéshez a
+ * request-oldali `Invoice`-tól eltérő válasz-oldali reprezentáció kellene
+ * — önálló tervezési döntés, nem old meg útközben. Lásd a design spec 7.
+ * és 16. fejezetét.
+ *
+ * A `detailed: true`-t a `toPayload()` ENNEK ELLENÉRE mindig kiküldi,
+ * belső implementációs részletként, nem a hívó számára választható
+ * opcióként. Az ok: élő sandbox méréssel megerősítve (Task 13), az
+ * alapértelmezett (nem részletes) `/query` válasz a `total`/
+ * `remainingTotal` mezőket `currency` NÉLKÜL küldi vissza — a
+ * `Transaction::fromPayload()` pedig jogosan hangos hibát dob egy
+ * pénznem nélküli összegre, mert nem tudja, hogyan értelmezze. A
+ * `detailed: true` válasz mindig tartalmazza a `currency` mezőt is,
+ * enélkül a csomag a `query()` leggyakoribb, legalapvetőbb használatakor
+ * (egy imént indított tranzakció összegének/állapotának lekérdezésekor)
+ * minden alkalommal dobna. A `detailed` extra mezőit (customer, invoice
+ * stb.) a `Transaction` továbbra sem olvassa ki — ez a mező csak a
+ * `currency` biztosítására szolgál, nem a részletes adatok kiajánlására.
  */
 final readonly class QueryRequest
 {
@@ -2117,10 +2172,6 @@ final readonly class QueryRequest
     /** @var list<string> */
     public array $orderRefs;
 
-    public bool $detailed;
-
-    public bool $refunds;
-
     /**
      * @param list<string> $transactionIds
      * @param list<string> $orderRefs
@@ -2128,8 +2179,6 @@ final readonly class QueryRequest
     public function __construct(
         array $transactionIds = [],
         array $orderRefs = [],
-        bool $detailed = false,
-        bool $refunds = false,
     ) {
         $transactionIds = self::withoutBlanks($transactionIds);
         $orderRefs = self::withoutBlanks($orderRefs);
@@ -2142,14 +2191,14 @@ final readonly class QueryRequest
 
         $this->transactionIds = $transactionIds;
         $this->orderRefs = $orderRefs;
-        $this->detailed = $detailed;
-        $this->refunds = $refunds;
     }
 
     /** @return array<string, mixed> */
     public function toPayload(): array
     {
-        $payload = [];
+        // Lásd az osztály docblockját: ez nem publikus opció, hanem a
+        // currency mező biztosítása a total/remainingTotal értelmezéséhez.
+        $payload = ['detailed' => true];
 
         if ([] !== $this->transactionIds) {
             $payload['transactionIds'] = $this->transactionIds;
@@ -2157,14 +2206,6 @@ final readonly class QueryRequest
 
         if ([] !== $this->orderRefs) {
             $payload['orderRefs'] = $this->orderRefs;
-        }
-
-        if ($this->detailed) {
-            $payload['detailed'] = true;
-        }
-
-        if ($this->refunds) {
-            $payload['refunds'] = true;
         }
 
         return $payload;
@@ -2614,7 +2655,14 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(QueryResponse::class)]
 final class QueryResponseTest extends TestCase
 {
-    /** @return array<string, mixed> */
+    /**
+     * @return array{
+     *     salt: string,
+     *     merchant: string,
+     *     totalCount: int,
+     *     transactions: list<array<string, mixed>>,
+     * }
+     */
     private static function payload(): array
     {
         return [
@@ -2627,9 +2675,12 @@ final class QueryResponseTest extends TestCase
                     'orderRef' => 'ORDER-1',
                     'transactionId' => 99999999,
                     'status' => 'FINISHED',
+                    'resultCode' => 'OK',
                     'total' => 1000,
+                    'remainingTotal' => 0,
                     'currency' => 'HUF',
                     'paymentDate' => '2026-08-30T12:05:00+02:00',
+                    'finishDate' => '2026-08-30T12:05:30+02:00',
                     'method' => 'CARD',
                 ],
                 [
@@ -2680,13 +2731,37 @@ final class QueryResponseTest extends TestCase
         $second = QueryResponse::fromPayload(self::payload())->transactions[1];
 
         self::assertNull($second->paymentDate);
+        self::assertNull($second->finishDate);
         self::assertNull($second->method);
         self::assertNull($second->total);
+        self::assertNull($second->remainingTotal);
+        self::assertNull($second->resultCode);
     }
 
     public function testMethodIsParsed(): void
     {
         self::assertSame(PaymentMethod::Card, QueryResponse::fromPayload(self::payload())->transactions[0]->method);
+    }
+
+    public function testResultCodeIsParsed(): void
+    {
+        self::assertSame('OK', QueryResponse::fromPayload(self::payload())->transactions[0]->resultCode);
+    }
+
+    public function testFinishDateIsParsed(): void
+    {
+        $finishDate = QueryResponse::fromPayload(self::payload())->transactions[0]->finishDate;
+
+        self::assertNotNull($finishDate);
+        self::assertSame('2026-08-30T12:05:30+02:00', $finishDate->format(\DateTimeInterface::ATOM));
+    }
+
+    public function testRemainingTotalIsParsedAsMoney(): void
+    {
+        $remainingTotal = QueryResponse::fromPayload(self::payload())->transactions[0]->remainingTotal;
+
+        self::assertNotNull($remainingTotal);
+        self::assertSame(0, $remainingTotal->minorUnits);
     }
 
     public function testAnEmptyResultIsValid(): void
@@ -2707,6 +2782,46 @@ final class QueryResponseTest extends TestCase
 
         QueryResponse::fromPayload($payload);
     }
+
+    public function testATotalWithoutACurrencyIsLoud(): void
+    {
+        $payload = self::payload();
+        unset($payload['transactions'][0]['currency']);
+
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessage('99999999');
+
+        QueryResponse::fromPayload($payload);
+    }
+
+    public function testARemainingTotalWithoutACurrencyIsLoud(): void
+    {
+        $payload = self::payload();
+        unset($payload['transactions'][0]['currency'], $payload['transactions'][0]['total']);
+        $payload['transactions'][0]['remainingTotal'] = 0;
+
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessage('99999999');
+
+        QueryResponse::fromPayload($payload);
+    }
+
+    public function testACurrencyWithoutATotalConstructsWithNullTotal(): void
+    {
+        $second = QueryResponse::fromPayload(self::payload())->transactions[1];
+
+        self::assertNull($second->total);
+    }
+
+    public function testBothCurrencyAndTotalAbsentLeavesTotalNull(): void
+    {
+        $payload = self::payload();
+        unset($payload['transactions'][1]['currency']);
+
+        $second = QueryResponse::fromPayload($payload)->transactions[1];
+
+        self::assertNull($second->total);
+    }
 }
 ```
 
@@ -2719,40 +2834,80 @@ declare(strict_types=1);
 
 namespace CodeConjure\SimplePay\Tests\Unit\Response;
 
+use CodeConjure\SimplePay\Currency;
+use CodeConjure\SimplePay\Exception\UnexpectedResponseException;
 use CodeConjure\SimplePay\Response\RefundResponse;
-use CodeConjure\SimplePay\TransactionStatus;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(RefundResponse::class)]
 final class RefundResponseTest extends TestCase
 {
-    public function testItReadsTheRefundTransactionId(): void
+    /** @return array<string, mixed> */
+    private static function payload(): array
     {
-        $response = RefundResponse::fromPayload([
+        return [
             'salt' => 'abcdefghijklmnopqrstuvwxyz012345',
             'merchant' => 'PUBLICTESTHUF',
             'orderRef' => 'ORDER-1',
+            'currency' => 'HUF',
             'transactionId' => 99999999,
             'refundTransactionId' => 88888888,
-            'status' => 'REFUND',
-        ]);
+            'refundTotal' => 5,
+            'remainingTotal' => 10,
+        ];
+    }
+
+    public function testItReadsTheRefundAmountsAsMoney(): void
+    {
+        $response = RefundResponse::fromPayload(self::payload());
 
         self::assertSame('99999999', $response->transactionId);
         self::assertSame('88888888', $response->refundTransactionId);
-        self::assertSame(TransactionStatus::Refund, $response->status);
+        self::assertSame(5, $response->refundTotal->minorUnits);
+        self::assertSame(Currency::HUF, $response->refundTotal->currency);
+        self::assertSame(10, $response->remainingTotal->minorUnits);
+        self::assertSame(Currency::HUF, $response->remainingTotal->currency);
     }
 
-    public function testOptionalFieldsMayBeMissing(): void
+    public function testRefundTransactionIdMayBeMissing(): void
     {
-        $response = RefundResponse::fromPayload([
-            'merchant' => 'PUBLICTESTHUF',
-            'orderRef' => 'ORDER-1',
-            'transactionId' => 99999999,
-        ]);
+        $payload = self::payload();
+        unset($payload['refundTransactionId']);
 
-        self::assertNull($response->refundTransactionId);
-        self::assertNull($response->status);
+        self::assertNull(RefundResponse::fromPayload($payload)->refundTransactionId);
+    }
+
+    public function testAMissingCurrencyIsLoud(): void
+    {
+        $payload = self::payload();
+        unset($payload['currency']);
+
+        $this->expectException(UnexpectedResponseException::class);
+
+        RefundResponse::fromPayload($payload);
+    }
+
+    public function testAMissingRefundTotalIsLoud(): void
+    {
+        $payload = self::payload();
+        unset($payload['refundTotal']);
+
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessage('refundTotal');
+
+        RefundResponse::fromPayload($payload);
+    }
+
+    public function testAMissingRemainingTotalIsLoud(): void
+    {
+        $payload = self::payload();
+        unset($payload['remainingTotal']);
+
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessage('remainingTotal');
+
+        RefundResponse::fromPayload($payload);
     }
 }
 ```
@@ -2834,24 +2989,29 @@ final readonly class Transaction
         public string $transactionId,
         public TransactionStatus $status,
         public ?Money $total = null,
+        public ?Money $remainingTotal = null,
         public ?\DateTimeImmutable $paymentDate = null,
+        public ?\DateTimeImmutable $finishDate = null,
         public ?PaymentMethod $method = null,
+        public ?string $resultCode = null,
     ) {
     }
 
     /** @param array<string, mixed> $payload */
     public static function fromPayload(array $payload): self
     {
-        $total = null;
         $currencyCode = PayloadReader::nullableString($payload, 'currency');
+        // isset() kezeli az explicit `null` és a hiányzó kulcs esetét egyformán mindkét
+        // összeg-mezőnél — a SimplePay nem szokott explicit nullt küldeni, így ez a
+        // megkülönböztetés szándékosan nem számít itt.
         $hasTotal = isset($payload['total']);
+        $hasRemainingTotal = isset($payload['remainingTotal']);
 
-        if (null !== $currencyCode && $hasTotal) {
-            $total = Money::fromApiValue(
-                PayloadReader::scalarAmount($payload, 'total'),
-                Currency::fromApi($currencyCode),
-            );
-        } elseif (null === $currencyCode && $hasTotal) {
+        $currency = null;
+
+        if (null !== $currencyCode) {
+            $currency = Currency::fromApi($currencyCode);
+        } elseif ($hasTotal || $hasRemainingTotal) {
             $transactionId = PayloadReader::nullableString($payload, 'transactionId');
 
             throw new UnexpectedResponseException(sprintf(
@@ -2867,9 +3027,16 @@ final readonly class Transaction
             orderRef: PayloadReader::string($payload, 'orderRef'),
             transactionId: PayloadReader::string($payload, 'transactionId'),
             status: TransactionStatus::fromApi(PayloadReader::string($payload, 'status')),
-            total: $total,
+            total: ($hasTotal && null !== $currency)
+                ? Money::fromApiValue(PayloadReader::scalarAmount($payload, 'total'), $currency)
+                : null,
+            remainingTotal: ($hasRemainingTotal && null !== $currency)
+                ? Money::fromApiValue(PayloadReader::scalarAmount($payload, 'remainingTotal'), $currency)
+                : null,
             paymentDate: PayloadReader::nullableDateTime($payload, 'paymentDate'),
+            finishDate: PayloadReader::nullableDateTime($payload, 'finishDate'),
             method: null === $method ? null : PaymentMethod::fromApi($method),
+            resultCode: PayloadReader::nullableString($payload, 'resultCode'),
         );
     }
 }
@@ -2939,8 +3106,9 @@ declare(strict_types=1);
 
 namespace CodeConjure\SimplePay\Response;
 
+use CodeConjure\SimplePay\Currency;
 use CodeConjure\SimplePay\Internal\PayloadReader;
-use CodeConjure\SimplePay\TransactionStatus;
+use CodeConjure\SimplePay\Money;
 
 final readonly class RefundResponse
 {
@@ -2948,22 +3116,24 @@ final readonly class RefundResponse
         public string $merchant,
         public string $orderRef,
         public string $transactionId,
+        public Money $refundTotal,
+        public Money $remainingTotal,
         public ?string $refundTransactionId = null,
-        public ?TransactionStatus $status = null,
     ) {
     }
 
     /** @param array<string, mixed> $payload */
     public static function fromPayload(array $payload): self
     {
-        $status = PayloadReader::nullableString($payload, 'status');
+        $currency = Currency::fromApi(PayloadReader::string($payload, 'currency'));
 
         return new self(
             merchant: PayloadReader::string($payload, 'merchant'),
             orderRef: PayloadReader::string($payload, 'orderRef'),
             transactionId: PayloadReader::string($payload, 'transactionId'),
+            refundTotal: Money::fromApiValue(PayloadReader::scalarAmount($payload, 'refundTotal'), $currency),
+            remainingTotal: Money::fromApiValue(PayloadReader::scalarAmount($payload, 'remainingTotal'), $currency),
             refundTransactionId: PayloadReader::nullableString($payload, 'refundTransactionId'),
-            status: null === $status ? null : TransactionStatus::fromApi($status),
         );
     }
 }
@@ -3471,7 +3641,7 @@ final class ClientOperationsTest extends TestCase
     /** @param array<string, mixed> $payload */
     private function signedResponse(array $payload): Response
     {
-        $body = json_encode($payload, JSON_THROW_ON_ERROR);
+        $body = json_encode($payload, \JSON_THROW_ON_ERROR);
 
         return new Response(200, ['Signature' => new Signature(self::SECRET)->sign($body)], $body);
     }
@@ -3495,7 +3665,7 @@ final class ClientOperationsTest extends TestCase
 
         $request = $this->httpClient->getLastRequest();
         self::assertNotFalse($request);
-        $sent = json_decode((string) $request->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $sent = json_decode((string) $request->getBody(), true, 512, \JSON_THROW_ON_ERROR);
 
         self::assertIsArray($sent);
         self::assertSame(['ORDER-1'], $sent['orderRefs']);
@@ -3519,8 +3689,10 @@ final class ClientOperationsTest extends TestCase
 
         $response = $this->client()->query(new QueryRequest(orderRefs: ['ORDER-1']));
 
-        self::assertSame(TransactionStatus::Finished, $response->first()?->status);
-        self::assertTrue($response->first()?->status->isSuccessful());
+        $transaction = $response->first();
+        self::assertNotNull($transaction);
+        self::assertSame(TransactionStatus::Finished, $transaction->status);
+        self::assertTrue($transaction->status->isSuccessful());
     }
 
     public function testRefundHitsTheRefundEndpoint(): void
@@ -3528,9 +3700,11 @@ final class ClientOperationsTest extends TestCase
         $this->httpClient->addResponse($this->signedResponse([
             'merchant' => 'PUBLICTESTHUF',
             'orderRef' => 'ORDER-1',
+            'currency' => 'HUF',
             'transactionId' => 99999999,
             'refundTransactionId' => 88888888,
-            'status' => 'REFUND',
+            'refundTotal' => 1000,
+            'remainingTotal' => 0,
         ]));
 
         $response = $this->client()->refund(new RefundRequest(
@@ -3542,6 +3716,8 @@ final class ClientOperationsTest extends TestCase
         self::assertNotFalse($request);
         self::assertSame('https://sandbox.simplepay.hu/payment/v2/refund', (string) $request->getUri());
         self::assertSame('88888888', $response->refundTransactionId);
+        self::assertSame(1000, $response->refundTotal->minorUnits);
+        self::assertSame(0, $response->remainingTotal->minorUnits);
     }
 
     public function testRefundSendsRefundTotal(): void
@@ -3549,7 +3725,10 @@ final class ClientOperationsTest extends TestCase
         $this->httpClient->addResponse($this->signedResponse([
             'merchant' => 'PUBLICTESTHUF',
             'orderRef' => 'ORDER-1',
+            'currency' => 'HUF',
             'transactionId' => 99999999,
+            'refundTotal' => 500,
+            'remainingTotal' => 0,
         ]));
 
         $this->client()->refund(new RefundRequest(
@@ -3559,7 +3738,7 @@ final class ClientOperationsTest extends TestCase
 
         $request = $this->httpClient->getLastRequest();
         self::assertNotFalse($request);
-        $sent = json_decode((string) $request->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $sent = json_decode((string) $request->getBody(), true, 512, \JSON_THROW_ON_ERROR);
 
         self::assertIsArray($sent);
         self::assertSame('500', $sent['refundTotal']);
@@ -4376,7 +4555,7 @@ final class QueryContractTest extends SandboxTestCase
             ),
         ));
 
-        $response = $client->query(new QueryRequest(orderRefs: [$orderRef], detailed: true));
+        $response = $client->query(new QueryRequest(orderRefs: [$orderRef]));
 
         self::assertGreaterThanOrEqual(1, $response->totalCount);
 
@@ -4392,10 +4571,13 @@ final class QueryContractTest extends SandboxTestCase
                     'orderRef' => $item->orderRef,
                     'transactionId' => $item->transactionId,
                     'status' => $item->status->value,
+                    'resultCode' => $item->resultCode,
                     'total' => $item->total?->toApiValue(),
-                    'currency' => $item->total?->currency->value,
+                    'remainingTotal' => $item->remainingTotal?->toApiValue(),
+                    'currency' => $item->total?->currency->value ?? $item->remainingTotal?->currency->value,
                     'method' => $item->method?->value,
                     'paymentDate' => $item->paymentDate?->format(\DateTimeInterface::ATOM),
+                    'finishDate' => $item->finishDate?->format(\DateTimeInterface::ATOM),
                 ],
                 $response->transactions,
             ),
@@ -4418,9 +4600,10 @@ namespace CodeConjure\SimplePay\Tests\Sandbox;
 use CodeConjure\SimplePay\Currency;
 use CodeConjure\SimplePay\Exception\RequestException;
 use CodeConjure\SimplePay\Money;
-use CodeConjure\SimplePay\Request\QueryRequest;
 use CodeConjure\SimplePay\Request\RefundRequest;
+use PHPUnit\Framework\Attributes\Group;
 
+#[Group('sandbox')]
 final class RefundContractTest extends SandboxTestCase
 {
     /**
@@ -4447,16 +4630,6 @@ final class RefundContractTest extends SandboxTestCase
                 'message' => $exception->getMessage(),
             ]);
         }
-    }
-
-    public function testQueryingWithRefundsFlagIsAccepted(): void
-    {
-        $response = $this->client()->query(new QueryRequest(
-            orderRefs: ['NEM-LETEZO-' . bin2hex(random_bytes(4))],
-            refunds: true,
-        ));
-
-        self::assertSame(0, $response->totalCount);
     }
 }
 ```

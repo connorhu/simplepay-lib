@@ -34,9 +34,12 @@ final class QueryResponseTest extends TestCase
                     'orderRef' => 'ORDER-1',
                     'transactionId' => 99999999,
                     'status' => 'FINISHED',
+                    'resultCode' => 'OK',
                     'total' => 1000,
+                    'remainingTotal' => 0,
                     'currency' => 'HUF',
                     'paymentDate' => '2026-08-30T12:05:00+02:00',
+                    'finishDate' => '2026-08-30T12:05:30+02:00',
                     'method' => 'CARD',
                 ],
                 [
@@ -87,13 +90,37 @@ final class QueryResponseTest extends TestCase
         $second = QueryResponse::fromPayload(self::payload())->transactions[1];
 
         self::assertNull($second->paymentDate);
+        self::assertNull($second->finishDate);
         self::assertNull($second->method);
         self::assertNull($second->total);
+        self::assertNull($second->remainingTotal);
+        self::assertNull($second->resultCode);
     }
 
     public function testMethodIsParsed(): void
     {
         self::assertSame(PaymentMethod::Card, QueryResponse::fromPayload(self::payload())->transactions[0]->method);
+    }
+
+    public function testResultCodeIsParsed(): void
+    {
+        self::assertSame('OK', QueryResponse::fromPayload(self::payload())->transactions[0]->resultCode);
+    }
+
+    public function testFinishDateIsParsed(): void
+    {
+        $finishDate = QueryResponse::fromPayload(self::payload())->transactions[0]->finishDate;
+
+        self::assertNotNull($finishDate);
+        self::assertSame('2026-08-30T12:05:30+02:00', $finishDate->format(\DateTimeInterface::ATOM));
+    }
+
+    public function testRemainingTotalIsParsedAsMoney(): void
+    {
+        $remainingTotal = QueryResponse::fromPayload(self::payload())->transactions[0]->remainingTotal;
+
+        self::assertNotNull($remainingTotal);
+        self::assertSame(0, $remainingTotal->minorUnits);
     }
 
     public function testAnEmptyResultIsValid(): void
@@ -119,6 +146,18 @@ final class QueryResponseTest extends TestCase
     {
         $payload = self::payload();
         unset($payload['transactions'][0]['currency']);
+
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessage('99999999');
+
+        QueryResponse::fromPayload($payload);
+    }
+
+    public function testARemainingTotalWithoutACurrencyIsLoud(): void
+    {
+        $payload = self::payload();
+        unset($payload['transactions'][0]['currency'], $payload['transactions'][0]['total']);
+        $payload['transactions'][0]['remainingTotal'] = 0;
 
         $this->expectException(UnexpectedResponseException::class);
         $this->expectExceptionMessage('99999999');
