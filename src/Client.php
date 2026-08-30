@@ -54,6 +54,13 @@ final readonly class Client
         return RefundResponse::fromPayload($this->post('refund', $request->toPayload()));
     }
 
+    /**
+     * @param \DateTimeImmutable|null $receivedAt a válaszba beírt `receiveDate` időbélyege — alapértelmezés
+     *                                             szerint a hívás pillanata (`new DateTimeImmutable()`). Publikus
+     *                                             paraméter, de elsősorban tesztelhetőségi seam: determinisztikus
+     *                                             időbélyeget enged átadni a `receiveDate` érték ellenőrzéséhez,
+     *                                             ahelyett hogy a rendszeridőt kellene mockolni.
+     */
     public function ipn(
         string $rawBody,
         string $signatureHeader,
@@ -68,7 +75,10 @@ final readonly class Client
         try {
             $decoded = json_decode($rawBody, true, 512, \JSON_THROW_ON_ERROR);
         } catch (\JsonException $exception) {
-            throw new TransportException('A SimplePay értesítés nem értelmezhető JSON.', previous: $exception);
+            throw new UnexpectedResponseException(
+                'A SimplePay értesítés nem értelmezhető JSON.',
+                previous: $exception,
+            );
         }
 
         if (!is_array($decoded)) {
@@ -79,6 +89,15 @@ final readonly class Client
         $typedDecoded = $decoded;
 
         $message = IpnMessage::fromPayload($typedDecoded);
+
+        if ($message->merchant !== $this->config->merchant) {
+            throw new UnexpectedResponseException(sprintf(
+                'A SimplePay értesítés "%s" merchant azonosítója nem a konfigurált "%s" merchanthoz tartozik.',
+                $message->merchant,
+                $this->config->merchant,
+            ));
+        }
+
         $responseBody = $this->appendReceiveDate($rawBody, $receivedAt ?? new \DateTimeImmutable());
 
         return new IpnConfirmation($message, $responseBody, $signature->sign($responseBody));

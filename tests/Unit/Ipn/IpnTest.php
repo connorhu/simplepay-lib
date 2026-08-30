@@ -8,7 +8,6 @@ use CodeConjure\SimplePay\Client;
 use CodeConjure\SimplePay\Config;
 use CodeConjure\SimplePay\Environment;
 use CodeConjure\SimplePay\Exception\SignatureException;
-use CodeConjure\SimplePay\Exception\TransportException;
 use CodeConjure\SimplePay\Exception\UnexpectedResponseException;
 use CodeConjure\SimplePay\Ipn\IpnConfirmation;
 use CodeConjure\SimplePay\Ipn\IpnMessage;
@@ -173,7 +172,7 @@ final class IpnTest extends TestCase
     {
         $body = 'nem json';
 
-        $this->expectException(TransportException::class);
+        $this->expectException(UnexpectedResponseException::class);
 
         $this->client()->ipn($body, self::signature($body));
     }
@@ -183,6 +182,18 @@ final class IpnTest extends TestCase
         $body = '"csak egy string"';
 
         $this->expectException(UnexpectedResponseException::class);
+
+        $this->client()->ipn($body, self::signature($body));
+    }
+
+    public function testAMessageForADifferentMerchantIsRejected(): void
+    {
+        $body = str_replace('"PUBLICTESTHUF"', '"OTHERMERCHANT"', self::BODY);
+
+        self::assertNotSame(self::BODY, $body, 'A teszt csak akkor értelmes, ha tényleg más merchant szerepel benne.');
+
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessageMatches('/merchant/');
 
         $this->client()->ipn($body, self::signature($body));
     }
