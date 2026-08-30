@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace CodeConjure\SimplePay\Request;
 
+use CodeConjure\SimplePay\Exception\ConfigurationException;
+
 /**
  * Mind a négy cím kötelező. A hivatalos SimplePay dokumentáció szerint a
  * `start` kérés vagy egy string `url` mezőt fogad el (egyetlen közös
@@ -44,6 +46,19 @@ final readonly class Urls
         public string $cancel,
         public string $timeout,
     ) {
+        foreach ([
+            'success' => $success,
+            'fail' => $fail,
+            'cancel' => $cancel,
+            'timeout' => $timeout,
+        ] as $field => $value) {
+            if ('' === $value) {
+                throw new ConfigurationException(sprintf(
+                    'A visszairányítási címek "%s" mezője nem lehet üres.',
+                    $field,
+                ));
+            }
+        }
     }
 
     /** @return array<string, string> */

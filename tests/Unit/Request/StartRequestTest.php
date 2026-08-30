@@ -236,4 +236,99 @@ final class StartRequestTest extends TestCase
 
         self::assertSame('0', $invoice->toPayload()['zip']);
     }
+
+    public function testStartRequestRejectsABlankOrderRef(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/orderRef/');
+
+        new StartRequest(
+            orderRef: '',
+            total: Money::fromMinorUnits(1000, Currency::HUF),
+            customerEmail: 'teszt@example.com',
+            invoice: self::invoice(),
+            urls: self::urls(),
+        );
+    }
+
+    public function testStartRequestRejectsABlankCustomerEmail(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/customerEmail/');
+
+        new StartRequest(
+            orderRef: 'ORDER-1',
+            total: Money::fromMinorUnits(1000, Currency::HUF),
+            customerEmail: '',
+            invoice: self::invoice(),
+            urls: self::urls(),
+        );
+    }
+
+    public function testStartRequestRejectsAnEmptyMethodsList(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/methods/');
+
+        new StartRequest(
+            orderRef: 'ORDER-1',
+            total: Money::fromMinorUnits(1000, Currency::HUF),
+            customerEmail: 'teszt@example.com',
+            invoice: self::invoice(),
+            urls: self::urls(),
+            methods: [],
+        );
+    }
+
+    public function testStartRequestKeepsAZeroOrderRef(): void
+    {
+        $request = new StartRequest(
+            orderRef: '0',
+            total: Money::fromMinorUnits(1000, Currency::HUF),
+            customerEmail: 'teszt@example.com',
+            invoice: self::invoice(),
+            urls: self::urls(),
+        );
+
+        self::assertSame('0', $request->toPayload()['orderRef']);
+    }
+
+    public function testUrlsRejectsABlankSuccess(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/success/');
+
+        new Urls(success: '', fail: 'https://bolt.hu/f', cancel: 'https://bolt.hu/c', timeout: 'https://bolt.hu/t');
+    }
+
+    public function testUrlsRejectsABlankFail(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/fail/');
+
+        new Urls(success: 'https://bolt.hu/s', fail: '', cancel: 'https://bolt.hu/c', timeout: 'https://bolt.hu/t');
+    }
+
+    public function testUrlsRejectsABlankCancel(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/cancel/');
+
+        new Urls(success: 'https://bolt.hu/s', fail: 'https://bolt.hu/f', cancel: '', timeout: 'https://bolt.hu/t');
+    }
+
+    public function testUrlsRejectsABlankTimeout(): void
+    {
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessageMatches('/timeout/');
+
+        new Urls(success: 'https://bolt.hu/s', fail: 'https://bolt.hu/f', cancel: 'https://bolt.hu/c', timeout: '');
+    }
+
+    public function testUrlsKeepsAZeroValue(): void
+    {
+        $urls = new Urls(success: '0', fail: 'https://bolt.hu/f', cancel: 'https://bolt.hu/c', timeout: 'https://bolt.hu/t');
+
+        self::assertSame('0', $urls->toPayload()['success']);
+    }
 }
