@@ -1,0 +1,10 @@
+{
+    "transactionId": 509007600,
+    "orderRef": "CONTRACT-20260830-092957-49a062",
+    "merchant": "PUBLICTESTHUF",
+    "timeout": "2026-08-30T11:34:57+02:00",
+    "total": 1000,
+    "paymentUrl": "https://sb-checkout.simplepay.hu/trx/q2jTlsoczt76OQPieAUOfrMjz5ICrQX6wS7l59u2gnJTLY8DDd",
+    "currency": "HUF",
+    "salt": "[REDACTED]"
+}
