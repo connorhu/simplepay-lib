@@ -8,7 +8,11 @@ use CodeConjure\SimplePay\Exception\RequestException;
 use CodeConjure\SimplePay\Exception\SignatureException;
 use CodeConjure\SimplePay\Exception\TransportException;
 use CodeConjure\SimplePay\Exception\UnexpectedResponseException;
+use CodeConjure\SimplePay\Request\QueryRequest;
+use CodeConjure\SimplePay\Request\RefundRequest;
 use CodeConjure\SimplePay\Request\StartRequest;
+use CodeConjure\SimplePay\Response\QueryResponse;
+use CodeConjure\SimplePay\Response\RefundResponse;
 use CodeConjure\SimplePay\Response\StartResponse;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
@@ -33,6 +37,16 @@ final readonly class Client
     public function start(StartRequest $request): StartResponse
     {
         return StartResponse::fromPayload($this->post('start', $request->toPayload()));
+    }
+
+    public function query(QueryRequest $request): QueryResponse
+    {
+        return QueryResponse::fromPayload($this->post('query', $request->toPayload()));
+    }
+
+    public function refund(RefundRequest $request): RefundResponse
+    {
+        return RefundResponse::fromPayload($this->post('refund', $request->toPayload()));
     }
 
     /**

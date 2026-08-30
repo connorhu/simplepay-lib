@@ -249,4 +249,16 @@ final class ClientTransportTest extends TestCase
         self::assertSame('https://sandbox.simplepay.hu/pay/pay/xyz', $response->paymentUrl);
         self::assertSame('99999999', $response->transactionId);
     }
+
+    public function testASignedNon2xxResponseWithoutErrorCodesBecomesATransportException(): void
+    {
+        $this->httpClient->addResponse($this->signedResponse(['message' => 'Internal server error'], 500));
+
+        try {
+            $this->client()->start($this->startRequest());
+            self::fail('Kivételt vártunk.');
+        } catch (TransportException $exception) {
+            self::assertStringContainsString('500', $exception->getMessage());
+        }
+    }
 }
