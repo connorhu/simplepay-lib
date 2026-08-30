@@ -2741,6 +2741,7 @@ declare(strict_types=1);
 namespace CodeConjure\SimplePay\Response;
 
 use CodeConjure\SimplePay\Currency;
+use CodeConjure\SimplePay\Exception\UnexpectedResponseException;
 use CodeConjure\SimplePay\Internal\PayloadReader;
 use CodeConjure\SimplePay\Money;
 use CodeConjure\SimplePay\PaymentMethod;
@@ -2764,12 +2765,20 @@ final readonly class Transaction
     {
         $total = null;
         $currencyCode = PayloadReader::nullableString($payload, 'currency');
+        $hasTotal = isset($payload['total']);
 
-        if (null !== $currencyCode && isset($payload['total'])) {
+        if (null !== $currencyCode && $hasTotal) {
             $total = Money::fromApiValue(
                 PayloadReader::scalarAmount($payload, 'total'),
                 Currency::fromApi($currencyCode),
             );
+        } elseif (null === $currencyCode && $hasTotal) {
+            $transactionId = PayloadReader::nullableString($payload, 'transactionId');
+
+            throw new UnexpectedResponseException(sprintf(
+                'A SimplePay tranzakció összeget küldött pénznem nélkül%s.',
+                null !== $transactionId ? sprintf(' (tranzakcióazonosító: %s)', $transactionId) : '',
+            ));
         }
 
         $method = PayloadReader::nullableString($payload, 'method');

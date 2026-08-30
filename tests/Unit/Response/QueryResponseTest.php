@@ -114,4 +114,32 @@ final class QueryResponseTest extends TestCase
 
         QueryResponse::fromPayload($payload);
     }
+
+    public function testATotalWithoutACurrencyIsLoud(): void
+    {
+        $payload = self::payload();
+        unset($payload['transactions'][0]['currency']);
+
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessage('99999999');
+
+        QueryResponse::fromPayload($payload);
+    }
+
+    public function testACurrencyWithoutATotalConstructsWithNullTotal(): void
+    {
+        $second = QueryResponse::fromPayload(self::payload())->transactions[1];
+
+        self::assertNull($second->total);
+    }
+
+    public function testBothCurrencyAndTotalAbsentLeavesTotalNull(): void
+    {
+        $payload = self::payload();
+        unset($payload['transactions'][1]['currency']);
+
+        $second = QueryResponse::fromPayload($payload)->transactions[1];
+
+        self::assertNull($second->total);
+    }
 }
