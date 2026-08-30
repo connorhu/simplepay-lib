@@ -121,14 +121,16 @@ $data = $client->parseReturn($_GET['r'], $_GET['s']);
 | Tárolt kártya | `/cardquery`, `/cardcancel` | ⬜ |
 | Token kezelés | `/tokenquery`, `/tokencancel` | ⬜ |
 | Fizetési mód: kártya | — | ✅ |
-| Fizetési mód: átutalás | — | ⬜ |
-| Pénznem: HUF, EUR, USD | — | ✅ |
-| Fizetőoldal nyelve: HU, EN, DE | — | ✅ |
+| Fizetési mód: átutalás | — | ⚠️ a `WIRE` érték küldhető és visszafejthető, de az átutalásos folyamat élőben sosem lett kipróbálva |
+| Pénznem: HUF, EUR, USD | — | ⚠️ HUF élő sandboxon ellenőrizve; EUR/USD implementálva és egységtesztelve, élőben sosem próbálva |
+| Fizetőoldal nyelve: HU, EN, DE | — | ⚠️ HU élő sandboxon ellenőrizve; EN/DE implementálva és egységtesztelve, élőben sosem próbálva |
 | További nyelvek | — | ⬜ |
 | Lekérdezés jóváírásokkal (`query` `refunds:true`) | `POST /query` | ⬜ szándékosan kihagyva |
 | Lekérdezés részletes adatokkal (`query` `detailed:true`) | `POST /query` | ⚠️ a kérés mindig `detailed:true`-t küld, a válasz extra mezői kihagyva |
 
 A `refunds:true` valóban hiányzik: az alakja (`refundStatus`, `refunds[]`) sandboxból strukturálisan sosem figyelhető meg, mert jóváírást csak befejezett fizetésen lehet indítani, azt pedig a csomag tesztsuite-ja emberi kattintás nélkül nem tudja előállítani. A `detailed:true` viszont **minden `query()` hívással kimegy** — ez nem opcionális, hívó által kikapcsolható viselkedés, hanem a csomag belső, szándékos döntése a `currency` mező biztosítására (lásd fent). Amit ez a kapcsoló emellett hozna (`customer`, `customerEmail`, `invoice{}`, `delivery`, `twoStep`, `shippingCost`, `discount`, és egy nem dokumentált `currencyEnum` mező), azt a csomag válasz-DTO-i továbbra sem olvassák ki.
+
+**A kártya, a HUF és a HU nyelv az egyetlen kombináció, amit a Task 13 kontraktus-tesztjei ténylegesen elküldtek az élő SimplePay sandboxnak.** A `StartContractTest` a `StartRequest` alapértelmezéseit használja (`methods: [PaymentMethod::Card]`, `language: Language::Hu`), a teszt-kereskedő (`PUBLICTESTHUF`) pedig csak HUF-ot fogad. A `WIRE` fizetési mód, az `EUR`/`USD` pénznem és az `EN`/`DE` nyelv mindegyike helyesen szerializálódik és értelmeződik vissza — egységtesztekkel lefedve —, de a SimplePay sosem látta őket egyetlen kérésben sem: sem az nem ismert, hogy a szolgáltatás elfogadja-e, sem az, hogy az átutalásos fizetés speciális, a kártyás folyamattól eltérő, a beérkezésig nyitva maradó folyamatát a csomag helyesen kezelné-e — erről a csomag jelenleg semmit nem modellez.
 
 ## Ismert bizonytalanságok
 
