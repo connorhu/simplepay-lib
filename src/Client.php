@@ -15,6 +15,7 @@ use CodeConjure\SimplePay\Request\RefundRequest;
 use CodeConjure\SimplePay\Request\StartRequest;
 use CodeConjure\SimplePay\Response\QueryResponse;
 use CodeConjure\SimplePay\Response\RefundResponse;
+use CodeConjure\SimplePay\Response\ReturnData;
 use CodeConjure\SimplePay\Response\StartResponse;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
@@ -81,6 +82,37 @@ final readonly class Client
         $responseBody = $this->appendReceiveDate($rawBody, $receivedAt ?? new \DateTimeImmutable());
 
         return new IpnConfirmation($message, $responseBody, $signature->sign($responseBody));
+    }
+
+    public function parseReturn(string $r, string $s): ReturnData
+    {
+        if ('' === trim($s) || !$this->config->signature()->verify($r, $s)) {
+            throw new SignatureException('A SimplePay visszatérési adat aláírása nem stimmel.');
+        }
+
+        $decodedJson = base64_decode($r, true);
+
+        if (false === $decodedJson) {
+            throw new UnexpectedResponseException('A SimplePay visszatérési adat nem base64.');
+        }
+
+        try {
+            $decoded = json_decode($decodedJson, true, 512, \JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw new UnexpectedResponseException(
+                'A SimplePay visszatérési adat nem értelmezhető JSON.',
+                previous: $exception,
+            );
+        }
+
+        if (!is_array($decoded)) {
+            throw new UnexpectedResponseException('A SimplePay visszatérési adat nem objektum.');
+        }
+
+        /** @var array<string, mixed> $typedPayload */
+        $typedPayload = $decoded;
+
+        return ReturnData::fromPayload($typedPayload);
     }
 
     /**
