@@ -102,12 +102,22 @@ abstract class SandboxTestCase extends TestCase
      * bizonyító erőt: a `FixtureConformanceTest` ezeken keresztül tudja
      * ellenőrizni, hogy a válasz-osztályaink a valódi API-alakot parsolják,
      * nem a saját korábbi szerializálásunkat.
+     *
+     * A lemezre írás előtt a `FixtureRedactor` eltávolítja az érzékeny
+     * mezőket (lásd ott) — a rögzítés pillanatában, nem utólag.
      */
     protected function recordRaw(string $name): void
     {
         $decoded = json_decode($this->rawResponse(), true, 512, \JSON_THROW_ON_ERROR);
 
-        $this->record($name, $decoded);
+        if (!is_array($decoded)) {
+            throw new \RuntimeException(sprintf(
+                'A(z) "%s" nyers válasz nem JSON objektum, nem rögzíthető fixture-ként.',
+                $name,
+            ));
+        }
+
+        $this->record($name, FixtureRedactor::redact($decoded));
     }
 
     private static function ensureFixtureDirExists(): void

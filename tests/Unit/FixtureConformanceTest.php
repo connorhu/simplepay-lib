@@ -100,6 +100,110 @@ final class FixtureConformanceTest extends TestCase
         self::assertFixtureParses($file);
     }
 
+    /**
+     * A `raw_start.json` és a `start.json` ugyanabból a kontraktus-teszt
+     * futásból, ugyanarról a tranzakcióról származik (lásd
+     * `StartContractTest::record()`/`recordRaw()`). Az, hogy mindkettő
+     * *parsolható*, önmagában nem bizonyítja, hogy *ugyanazt jelentik* — egy
+     * mezőnév-eltolódás a két oldal között simán átcsúszhatna, ha csak a
+     * parsolhatóságot néznénk. Ez a teszt a kétszintű fixture-stratégia
+     * tényleges célját ellenőrzi: a nyers válaszból és a DTO-összefoglalóból
+     * ugyanaz a `StartResponse` épül-e fel.
+     */
+    public function testRawStartFixtureParsesToTheSameValuesAsTheStartSummary(): void
+    {
+        $raw = self::loadFixture('raw_start');
+        $summary = self::loadFixture('start');
+
+        if (null === $raw || null === $summary) {
+            self::markTestSkipped(
+                'Nincs rögzített raw_start/start fixture-pár — a sandbox suite még nem futott.',
+            );
+        }
+
+        $rawResponse = StartResponse::fromPayload($raw);
+        $summaryResponse = StartResponse::fromPayload($summary);
+
+        self::assertSame($summaryResponse->orderRef, $rawResponse->orderRef);
+        self::assertSame($summaryResponse->transactionId, $rawResponse->transactionId);
+        self::assertSame($summaryResponse->merchant, $rawResponse->merchant);
+        self::assertSame($summaryResponse->paymentUrl, $rawResponse->paymentUrl);
+        self::assertSame($summaryResponse->total->minorUnits, $rawResponse->total->minorUnits);
+        self::assertSame($summaryResponse->total->currency, $rawResponse->total->currency);
+        self::assertSame(
+            $summaryResponse->timeout?->format(\DateTimeInterface::ATOM),
+            $rawResponse->timeout?->format(\DateTimeInterface::ATOM),
+        );
+    }
+
+    /**
+     * Ugyanaz az érvelés, mint a `start`/`raw_start` párnál, a `query`
+     * végpontra: a `raw_query.json` és a `query.json` ugyanazt a
+     * tranzakciót írja le két különböző szinten — a teszt azt bizonyítja,
+     * hogy a kettő ugyanarra a `QueryResponse`-ra képződik le.
+     */
+    public function testRawQueryFixtureParsesToTheSameValuesAsTheQuerySummary(): void
+    {
+        $raw = self::loadFixture('raw_query');
+        $summary = self::loadFixture('query');
+
+        if (null === $raw || null === $summary) {
+            self::markTestSkipped(
+                'Nincs rögzített raw_query/query fixture-pár — a sandbox suite még nem futott.',
+            );
+        }
+
+        $rawResponse = QueryResponse::fromPayload($raw);
+        $summaryResponse = QueryResponse::fromPayload($summary);
+
+        self::assertSame($summaryResponse->totalCount, $rawResponse->totalCount);
+        self::assertCount(count($summaryResponse->transactions), $rawResponse->transactions);
+
+        foreach ($summaryResponse->transactions as $index => $expected) {
+            $actual = $rawResponse->transactions[$index];
+
+            self::assertSame($expected->merchant, $actual->merchant);
+            self::assertSame($expected->orderRef, $actual->orderRef);
+            self::assertSame($expected->transactionId, $actual->transactionId);
+            self::assertSame($expected->status, $actual->status);
+            self::assertSame($expected->total?->minorUnits, $actual->total?->minorUnits);
+            self::assertSame($expected->remainingTotal?->minorUnits, $actual->remainingTotal?->minorUnits);
+            self::assertSame(
+                $expected->paymentDate?->format(\DateTimeInterface::ATOM),
+                $actual->paymentDate?->format(\DateTimeInterface::ATOM),
+            );
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function loadFixture(string $name): ?array
+    {
+        $path = sprintf('%s/%s.json', self::FIXTURE_DIR, $name);
+
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $raw = file_get_contents($path);
+
+        if (false === $raw) {
+            self::fail(sprintf('A(z) "%s" fixture nem olvasható.', $path));
+        }
+
+        $decoded = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+
+        if (!is_array($decoded)) {
+            self::fail(sprintf('A(z) "%s.json" fixture nem JSON objektum.', $name));
+        }
+
+        /** @var array<string, mixed> $typedDecoded */
+        $typedDecoded = $decoded;
+
+        return $typedDecoded;
+    }
+
     private static function assertFixtureParses(string $file): void
     {
         $name = basename($file, '.json');
