@@ -63,7 +63,7 @@ A `egyhazzene.hu/bolt` appban ma `src/Components/Payum/SimplePay/` alatt él egy
 | Teszt namespace | `CodeConjure\SimplePay\Tests` |
 | Licenc | MIT |
 | Helye | `/server/www/egyhazzene.hu/incubator/simplepay/` |
-| Git | önálló repo |
+| Git | https://github.com/connorhu/simplepay-lib |
 
 ## 4. Követelmények
 
