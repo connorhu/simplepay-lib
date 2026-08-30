@@ -114,9 +114,17 @@ final class StartRequestTest extends TestCase
         self::assertArrayNotHasKey('sdkVersion', $payload);
     }
 
-    public function testUrlsAreSentAsAMapAndTheIpnGoesOutAsDn(): void
+    /**
+     * A sandbox kontraktus-teszt (Task 13) bizonyította: a SimplePay a
+     * differenciált visszairányítási címeket a `urls` (többes szám) kulcs
+     * alatt várja — az egyes számú `url` kulcs 5321-es hibakóddal
+     * ("Formátumhiba / érvénytelen JSON string") elutasításra kerül. A `dn`
+     * mezőt a sandbox csendben figyelmen kívül hagyja, tehát a jelenlétét
+     * legfeljebb ártalmatlannak, nem pedig működőnek tekintjük.
+     */
+    public function testUrlsAreSentAsAMapUnderTheUrlsKeyAndTheIpnGoesOutAsDn(): void
     {
-        $urls = self::request()->toPayload()['url'];
+        $urls = self::request()->toPayload()['urls'];
 
         self::assertIsArray($urls);
         self::assertSame('https://bolt.hu/vissza?e=success', $urls['success']);
