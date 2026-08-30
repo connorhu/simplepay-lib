@@ -92,6 +92,9 @@ final class PayloadReader
      */
     public static function mapList(array $payload, string $key): array
     {
+        // A ?? egyformán kezeli a hiányzó kulcsot és az explicit `null` értéket —
+        // a SimplePay nem szokott explicit nullt küldeni, így ez a megkülönböztetés
+        // szándékosan nem számít itt; mindkét eset üres listaként értelmeződik.
         $value = $payload[$key] ?? [];
 
         if (!is_array($value)) {

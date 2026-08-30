@@ -90,4 +90,44 @@ final class PayloadReaderTest extends TestCase
 
         PayloadReader::mapList(['transactions' => ['nem tömb']], 'transactions');
     }
+
+    public function testScalarAmountAcceptsAnInt(): void
+    {
+        self::assertSame(1000, PayloadReader::scalarAmount(['total' => 1000], 'total'));
+    }
+
+    public function testScalarAmountAcceptsAZeroInt(): void
+    {
+        self::assertSame(0, PayloadReader::scalarAmount(['total' => 0], 'total'));
+    }
+
+    public function testScalarAmountAcceptsAFloat(): void
+    {
+        self::assertSame(10.5, PayloadReader::scalarAmount(['total' => 10.5], 'total'));
+    }
+
+    public function testScalarAmountAcceptsANumericString(): void
+    {
+        self::assertSame('1000', PayloadReader::scalarAmount(['total' => '1000'], 'total'));
+    }
+
+    public function testScalarAmountAcceptsTheStringZero(): void
+    {
+        self::assertSame('0', PayloadReader::scalarAmount(['total' => '0'], 'total'));
+    }
+
+    public function testScalarAmountMissingNamesTheKey(): void
+    {
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessage('total');
+
+        PayloadReader::scalarAmount([], 'total');
+    }
+
+    public function testScalarAmountRejectsNonNumeric(): void
+    {
+        $this->expectException(UnexpectedResponseException::class);
+
+        PayloadReader::scalarAmount(['total' => 'sok'], 'total');
+    }
 }

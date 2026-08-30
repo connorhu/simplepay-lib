@@ -29,6 +29,9 @@ final readonly class Transaction
     {
         $total = null;
         $currencyCode = PayloadReader::nullableString($payload, 'currency');
+        // isset() kezeli az explicit `"total": null` és a hiányzó kulcs esetét egyformán —
+        // a SimplePay nem szokott explicit nullt küldeni, így ez a megkülönböztetés
+        // szándékosan nem számít itt.
         $hasTotal = isset($payload['total']);
 
         if (null !== $currencyCode && $hasTotal) {

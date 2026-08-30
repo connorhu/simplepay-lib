@@ -63,4 +63,25 @@ final class StartResponseTest extends TestCase
 
         self::assertNull(StartResponse::fromPayload($payload)->timeout);
     }
+
+    public function testAMissingTotalIsLoud(): void
+    {
+        $payload = self::payload();
+        unset($payload['total']);
+
+        $this->expectException(UnexpectedResponseException::class);
+        $this->expectExceptionMessage('total');
+
+        StartResponse::fromPayload($payload);
+    }
+
+    public function testANonNumericTotalIsLoud(): void
+    {
+        $payload = self::payload();
+        $payload['total'] = 'sok';
+
+        $this->expectException(UnexpectedResponseException::class);
+
+        StartResponse::fromPayload($payload);
+    }
 }
