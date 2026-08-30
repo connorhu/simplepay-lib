@@ -8,6 +8,8 @@ use CodeConjure\SimplePay\Exception\RequestException;
 use CodeConjure\SimplePay\Exception\SignatureException;
 use CodeConjure\SimplePay\Exception\TransportException;
 use CodeConjure\SimplePay\Exception\UnexpectedResponseException;
+use CodeConjure\SimplePay\Ipn\IpnConfirmation;
+use CodeConjure\SimplePay\Ipn\IpnMessage;
 use CodeConjure\SimplePay\Request\QueryRequest;
 use CodeConjure\SimplePay\Request\RefundRequest;
 use CodeConjure\SimplePay\Request\StartRequest;
@@ -24,6 +26,8 @@ final readonly class Client
     public const string SDK_VERSION = 'CodeConjure_SimplePay/1.0';
 
     private const int JSON_FLAGS = \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE;
+
+    private const string RECEIVE_DATE_FORMAT = \DateTimeInterface::ATOM;
 
     public function __construct(
         private Config $config,
@@ -47,6 +51,60 @@ final readonly class Client
     public function refund(RefundRequest $request): RefundResponse
     {
         return RefundResponse::fromPayload($this->post('refund', $request->toPayload()));
+    }
+
+    public function ipn(
+        string $rawBody,
+        string $signatureHeader,
+        ?\DateTimeImmutable $receivedAt = null,
+    ): IpnConfirmation {
+        $signature = $this->config->signature();
+
+        if ('' === trim($signatureHeader) || !$signature->verify($rawBody, $signatureHeader)) {
+            throw new SignatureException('A SimplePay értesítés aláírása nem stimmel.');
+        }
+
+        try {
+            $decoded = json_decode($rawBody, true, 512, \JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw new TransportException('A SimplePay értesítés nem értelmezhető JSON.', previous: $exception);
+        }
+
+        if (!is_array($decoded)) {
+            throw new UnexpectedResponseException('A SimplePay értesítés törzse nem objektum.');
+        }
+
+        /** @var array<string, mixed> $typedDecoded */
+        $typedDecoded = $decoded;
+
+        $message = IpnMessage::fromPayload($typedDecoded);
+        $responseBody = $this->appendReceiveDate($rawBody, $receivedAt ?? new \DateTimeImmutable());
+
+        return new IpnConfirmation($message, $responseBody, $signature->sign($responseBody));
+    }
+
+    /**
+     * A visszaigazolás a bejövő byte-okból épül: a záró kapcsos zárójel elé
+     * szúrjuk be a receiveDate mezőt, minden mást változatlanul hagyva.
+     */
+    private function appendReceiveDate(string $rawBody, \DateTimeImmutable $receivedAt): string
+    {
+        $trimmed = rtrim($rawBody);
+
+        if (!str_starts_with($trimmed, '{') || !str_ends_with($trimmed, '}')) {
+            throw new UnexpectedResponseException('A SimplePay értesítés törzse nem JSON objektum.');
+        }
+
+        $receiveDate = sprintf(
+            '"receiveDate":%s',
+            json_encode($receivedAt->format(self::RECEIVE_DATE_FORMAT), self::JSON_FLAGS),
+        );
+
+        $inner = trim(substr($trimmed, 1, -1));
+
+        return '' === $inner
+            ? '{' . $receiveDate . '}'
+            : substr($trimmed, 0, -1) . ',' . $receiveDate . '}';
     }
 
     /**
