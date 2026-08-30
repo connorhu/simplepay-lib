@@ -1,0 +1,32 @@
+{
+    "salt": "LvZ0pWp41vbumxy9e9RgMwWRsFaNPp9z",
+    "merchant": "PUBLICTESTHUF",
+    "transactions": [
+        {
+            "salt": "zYBe80cEQDdkq0af3akdE4Vtq93Gf3PU",
+            "merchant": "PUBLICTESTHUF",
+            "orderRef": "CONTRACT-20260830-092957-6bb7a8",
+            "currency": "HUF",
+            "currencyEnum": "HUF",
+            "customer": "Teszt Elek",
+            "customerEmail": "contract-test@example.com",
+            "language": "HU",
+            "twoStep": false,
+            "total": 1000,
+            "shippingCost": 0,
+            "discount": 0,
+            "invoice": {
+                "name": "Teszt Elek",
+                "country": "HU",
+                "city": "Budapest",
+                "zip": "1011",
+                "address": "Fő utca 1."
+            },
+            "transactionId": 509007599,
+            "status": "INIT",
+            "remainingTotal": 1000,
+            "paymentDate": "2026-08-30T11:29:57+02:00"
+        }
+    ],
+    "totalCount": 1
+}

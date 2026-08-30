@@ -37,6 +37,16 @@ use CodeConjure\SimplePay\Exception\ConfigurationException;
  * minden alkalommal dobna. A `detailed` extra mezőit (customer, invoice
  * stb.) a `Transaction` továbbra sem olvassa ki — ez a mező csak a
  * `currency` biztosítására szolgál, nem a részletes adatok kiajánlására.
+ *
+ * ADATVÉDELMI KÖVETKEZMÉNY: mivel a `detailed: true` mindig kimegy, a
+ * SimplePay válasza minden `query()` hívásnál tartalmazza a vevő nevét
+ * (`customer`), e-mail címét (`customerEmail`) és számlázási címét
+ * (`invoice{}`) is — még ha a `Transaction` ezeket el is dobja, a
+ * byte-ok akkor is végigmentek a hálózaton, és megjelenhetnek bármilyen
+ * HTTP-szintű naplózásban, amit a csomagot használó rendszer bekapcsolt
+ * (pl. PSR-18 kliens middleware, proxy log). Ez a `currency` mező
+ * biztosításának valódi ára — nem elméleti, hanem a jelen tervezési
+ * döntés tényleges következménye.
  */
 final readonly class QueryRequest
 {

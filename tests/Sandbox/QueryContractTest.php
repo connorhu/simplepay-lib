@@ -42,6 +42,8 @@ final class QueryContractTest extends SandboxTestCase
         self::assertNotNull($transaction, 'A lekérdezés a transactions tömbben adja vissza a tranzakciót.');
         self::assertInstanceOf(TransactionStatus::class, $transaction->status);
 
+        // A DTO-összefoglaló olvashatóság kedvéért marad, de a bizonyító erejű
+        // fixture a nyers, dekódolatlan válasz-törzs — lásd recordRaw().
         $this->record('query', [
             'totalCount' => $response->totalCount,
             'transactions' => array_map(
@@ -61,5 +63,7 @@ final class QueryContractTest extends SandboxTestCase
                 $response->transactions,
             ),
         ]);
+
+        $this->recordRaw('raw_query');
     }
 }

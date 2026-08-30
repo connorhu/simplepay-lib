@@ -36,6 +36,8 @@ final class StartContractTest extends SandboxTestCase
         self::assertStringStartsWith('https://', $response->paymentUrl);
         self::assertSame(1000, $response->total->minorUnits);
 
+        // A DTO-összefoglaló olvashatóság kedvéért marad, de a bizonyító erejű
+        // fixture a nyers, dekódolatlan válasz-törzs — lásd recordRaw().
         $this->record('start', [
             'orderRef' => $response->orderRef,
             'transactionId' => $response->transactionId,
@@ -45,5 +47,7 @@ final class StartContractTest extends SandboxTestCase
             'currency' => $response->total->currency->value,
             'timeout' => $response->timeout?->format(\DateTimeInterface::ATOM),
         ]);
+
+        $this->recordRaw('raw_start');
     }
 }

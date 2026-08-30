@@ -59,4 +59,19 @@ final class SignatureTest extends TestCase
     {
         self::assertNotSame(self::EXPECTED, new Signature('masik-kulcs')->sign(self::BODY));
     }
+
+    /**
+     * A hivatalos SimplePay PHP SDK (2.1.5, 2026-06-27) a saját
+     * getSignature()-jében `trim($key)`-t hív, mind aláíráskor, mind
+     * ellenőrzéskor. Enélkül egy vezető/záró szóközzel bemásolt kulcs
+     * csendben más aláírást adna, mint amit a SimplePay ténylegesen vár.
+     */
+    public function testALeadingOrTrailingWhitespaceInTheKeyIsTrimmedBeforeSigning(): void
+    {
+        self::assertSame(
+            self::EXPECTED,
+            new Signature(' 	' . self::SECRET . '
+')->sign(self::BODY),
+        );
+    }
 }

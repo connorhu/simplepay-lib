@@ -32,10 +32,16 @@ final class RefundContractTest extends SandboxTestCase
         } catch (RequestException $exception) {
             self::assertNotSame([], $exception->codes());
 
+            // A DTO-összefoglaló olvashatóság kedvéért marad, de a bizonyító
+            // erejű fixture a nyers, dekódolatlan válasz-törzs — lásd
+            // recordRaw(). Ez a szó szerinti "errorCodes" kulcsot hordozza,
+            // nem a mi kényelmi "codes" nevünket.
             $this->record('refund_error', [
                 'codes' => $exception->codes(),
                 'message' => $exception->getMessage(),
             ]);
+
+            $this->recordRaw('raw_refund_error');
         }
     }
 }

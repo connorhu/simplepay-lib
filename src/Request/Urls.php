@@ -27,11 +27,14 @@ namespace CodeConjure\SimplePay\Request;
  *
  * Nincs per-request IPN-cím mező sem (sem `url`, sem `urls` alatt, és
  * semmilyen más néven): a hivatalos dokumentáció szerint az IPN (fizetési
- * értesítés) címét NEM a `start` kérés hordozza, azt a kereskedői admin
- * felületen, a "Technikai adatok" fülön kell beállítani, fiókszinten. Ne
- * keress ide paramétert az IPN cím megadására — nincs ilyen, és korábban
- * egy `ipn`/`dn` mező itt pontosan ezt a téves benyomást keltette (a
- * sandbox csendben eldobta, sosem routolt vele semmit).
+ * értesítés) címét NEM a `start` kérés hordozza. A dokumentáció ezt
+ * kétszer, szó szerint egyformán írja le: „Az IPN URL beállítását a
+ * kereskedői vezérlőpanelen lehet elvégezni. […] A címet a »Technikai
+ * adatok« menüpont alatt lehet beállítani.” — fiókonként külön (ha a
+ * kereskedő több fiókot használ, mindegyikben meg kell adni). Ne keress
+ * ide paramétert az IPN cím megadására — nincs ilyen, és korábban egy
+ * `ipn`/`dn` mező itt pontosan ezt a téves benyomást keltette (a sandbox
+ * csendben eldobta, sosem routolt vele semmit).
  */
 final readonly class Urls
 {

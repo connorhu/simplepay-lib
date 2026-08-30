@@ -646,7 +646,9 @@ use PHPUnit\Framework\TestCase;
 final class SignatureTest extends TestCase
 {
     private const string SECRET = 'FxDa5w314kLlNseq2sKuVwaqZshZT5d6';
+
     private const string BODY = '{"salt":"abcdefghijklmnopqrstuvwxyz012345","merchant":"PUBLICTESTHUF"}';
+
     private const string EXPECTED = '2jhhXDkc6/cJna/lMvut1qRt+a1t1AakfzqiovFTkuweGmMTsj3qSjYzfpcNcWU2';
 
     public function testSignProducesTheKnownVector(): void
@@ -691,6 +693,21 @@ final class SignatureTest extends TestCase
     {
         self::assertNotSame(self::EXPECTED, new Signature('masik-kulcs')->sign(self::BODY));
     }
+
+    /**
+     * A hivatalos SimplePay PHP SDK (2.1.5, 2026-06-27) a saját
+     * getSignature()-jében `trim($key)`-t hív, mind aláíráskor, mind
+     * ellenőrzéskor. Enélkül egy vezető/záró szóközzel bemásolt kulcs
+     * csendben más aláírást adna, mint amit a SimplePay ténylegesen vár.
+     */
+    public function testALeadingOrTrailingWhitespaceInTheKeyIsTrimmedBeforeSigning(): void
+    {
+        self::assertSame(
+            self::EXPECTED,
+            new Signature(' 	' . self::SECRET . '
+')->sign(self::BODY),
+        );
+    }
 }
 ```
 
@@ -715,13 +732,24 @@ namespace CodeConjure\SimplePay;
  *
  * A metódusok szándékosan `string`-et fogadnak és nem tömböt: a bejövő üzenetet
  * mindig a kapott byte-okon kell ellenőrizni, sosem egy újrakódolt változatán.
+ *
+ * A secretKey-t trim()-eljük, mielőtt aláírásra használnánk — a hivatalos
+ * SimplePay PHP SDK (2.1.5, 2026-06-27, `src/SimplePayV21.php`) is
+ * `trim($key)`-t hív a saját `getSignature()`-jében, mind aláíráskor, mind
+ * ellenőrzéskor. Enélkül egy vezető/záró szóközzel bemásolt kulcs csendben
+ * más aláírást adna, mint amit a SimplePay (és a saját SDK-juk) számolna —
+ * minden hívás elutasításra kerülne egy olyan hibával, ami sehol nem
+ * mutatna a valódi okra.
  */
 final readonly class Signature
 {
     private const string ALGORITHM = 'sha384';
 
-    public function __construct(private string $secretKey)
+    private string $secretKey;
+
+    public function __construct(string $secretKey)
     {
+        $this->secretKey = trim($secretKey);
     }
 
     public function sign(string $body): string
@@ -747,6 +775,8 @@ Expected: PASS, 8 teszt.
 git add src/Signature.php tests/Unit/SignatureTest.php
 git commit -m "feat: HMAC-SHA384 alairas byte-sorozat felett"
 ```
+
+**Fix round (Task 13, 2026-08-30) — a secretKey mostantól trim()-elve.** A hivatalos SimplePay PHP SDK (2.1.5, 2026-06-27) `getSignature()`-je `trim($key)`-t hív, mielőtt aláírásra használná a kulcsot, mind aláíráskor, mind ellenőrzéskor. A `Signature` eredetileg nem trimmelt — egy vezető/záró szóközzel bemásolt kulcs csendben más aláírást adott volna, mint amit a SimplePay (és a saját SDK-juk) számol. Javítva: a konstruktor `trim()`-eli a `secretKey`-t; új teszt (`testALeadingOrTrailingWhitespaceInTheKeyIsTrimmedBeforeSigning`) pinneli le, hogy egy whitespace-szel bővített kulcs ugyanazt az aláírást adja, mint a trimmelt.
 
 ---
 
@@ -2029,11 +2059,14 @@ namespace CodeConjure\SimplePay\Request;
  *
  * Nincs per-request IPN-cím mező sem (sem `url`, sem `urls` alatt, és
  * semmilyen más néven): a hivatalos dokumentáció szerint az IPN (fizetési
- * értesítés) címét NEM a `start` kérés hordozza, azt a kereskedői admin
- * felületen, a "Technikai adatok" fülön kell beállítani, fiókszinten. Ne
- * keress ide paramétert az IPN cím megadására — nincs ilyen, és korábban
- * egy `ipn`/`dn` mező itt pontosan ezt a téves benyomást keltette (a
- * sandbox csendben eldobta, sosem routolt vele semmit).
+ * értesítés) címét NEM a `start` kérés hordozza. A dokumentáció ezt
+ * kétszer, szó szerint egyformán írja le: „Az IPN URL beállítását a
+ * kereskedői vezérlőpanelen lehet elvégezni. […] A címet a »Technikai
+ * adatok« menüpont alatt lehet beállítani.” — fiókonként külön (ha a
+ * kereskedő több fiókot használ, mindegyikben meg kell adni). Ne keress
+ * ide paramétert az IPN cím megadására — nincs ilyen, és korábban egy
+ * `ipn`/`dn` mező itt pontosan ezt a téves benyomást keltette (a sandbox
+ * csendben eldobta, sosem routolt vele semmit).
  */
 final readonly class Urls
 {
@@ -2163,6 +2196,16 @@ use CodeConjure\SimplePay\Exception\ConfigurationException;
  * minden alkalommal dobna. A `detailed` extra mezőit (customer, invoice
  * stb.) a `Transaction` továbbra sem olvassa ki — ez a mező csak a
  * `currency` biztosítására szolgál, nem a részletes adatok kiajánlására.
+ *
+ * ADATVÉDELMI KÖVETKEZMÉNY: mivel a `detailed: true` mindig kimegy, a
+ * SimplePay válasza minden `query()` hívásnál tartalmazza a vevő nevét
+ * (`customer`), e-mail címét (`customerEmail`) és számlázási címét
+ * (`invoice{}`) is — még ha a `Transaction` ezeket el is dobja, a
+ * byte-ok akkor is végigmentek a hálózaton, és megjelenhetnek bármilyen
+ * HTTP-szintű naplózásban, amit a csomagot használó rendszer bekapcsolt
+ * (pl. PSR-18 kliens middleware, proxy log). Ez a `currency` mező
+ * biztosításának valódi ára — nem elméleti, hanem a jelen tervezési
+ * döntés tényleges következménye.
  */
 final readonly class QueryRequest
 {
@@ -4376,12 +4419,13 @@ git commit -m "feat: visszateresi adat alairas-ellenorzessel"
 ## Task 13: Sandbox kontraktus-tesztek és fixture-rögzítés
 
 **Files:**
-- Create: `tests/Sandbox/SandboxTestCase.php`, `tests/Sandbox/StartContractTest.php`, `tests/Sandbox/QueryContractTest.php`, `tests/Sandbox/RefundContractTest.php`
+- Create: `tests/Sandbox/SandboxTestCase.php`, `tests/Sandbox/RecordingHttpClient.php`, `tests/Sandbox/StartContractTest.php`, `tests/Sandbox/QueryContractTest.php`, `tests/Sandbox/RefundContractTest.php`
 - Create: `tests/Fixtures/sandbox/.gitkeep`
+- Create (fix round, 2026-08-30): `tests/Unit/FixtureConformanceTest.php` — lásd az "Addition 2" jegyzetet lent
 
 **Interfaces:**
 - Consumes: a teljes publikus felület
-- Produces: `tests/Fixtures/sandbox/start.json`, `query.json`, `refund.json` — a valódi sandbox válaszok, verziózva
+- Produces: `tests/Fixtures/sandbox/start.json`, `query.json`, `refund_error.json` — DTO-összefoglalók, olvashatóság kedvéért; `raw_start.json`, `raw_query.json`, `raw_refund_error.json` — a nyers, dekódolatlan válasz-törzsek, ahogy a SimplePay ténylegesen elküldte őket. Csak az utóbbiak bizonyítanak bármit a valódi API-alakról — lásd a "Fix round 1" jegyzetet lent.
 
 Ez az a task, ami a felmérés gyökérokát javítja: eddig egyik implementáció sem beszélt az igazi SimplePay sandboxszal, ezért a mockokba beleírt téves feltevések zöld tesztként jelentek meg.
 
@@ -4391,6 +4435,70 @@ Ez az a task, ami a felmérés gyökérokát javítja: eddig egyik implementáci
 
 Run: `composer require --dev php-http/curl-client:^2.3`
 Expected: sikeres telepítés.
+
+- [ ] **Step 1b (fix round 1, 2026-08-30 — utólag felvéve): Írd meg a rögzítő PSR-18 dekorátort**
+
+A `Client` a válasz-törzset csak a saját DTO-in keresztül látja, tehát a `record()`-nak átadott DTO-összefoglalók a saját szerializálásunkat tükrözik vissza — egy renamelt kulcsot vagy megváltozott típust csak a `--group sandbox` futás pillanatában venne észre, a committolt fixture-ök soha többé. A `RecordingHttpClient` a valódi PSR-18 kliens elé ül és megőrzi a nyers válasz-törzs byte-jait, mielőtt bármi (Client, DTO) feldolgozná.
+
+`tests/Sandbox/RecordingHttpClient.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace CodeConjure\SimplePay\Tests\Sandbox;
+
+use Psr\Http\Client\ClientExceptionInterface;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+
+/**
+ * PSR-18 dekorátor, ami a valódi kliens elé ül, kizárólag a sandbox
+ * kontraktus-tesztek számára. Célja: a `Client` a válasz-törzset a saját
+ * DTO-in keresztül olvassa, tehát semmi mást nem tudnánk elmondani arról,
+ * mi jött ténylegesen a huzalon — ez a dekorátor megőrzi a nyers,
+ * dekódolatlan válasz-törzs byte-jait, mielőtt bármi feldolgozná.
+ *
+ * A `Client` DTO-i és a fixture-be írt DTO-összefoglalók a saját
+ * szerializálásunkat tükrözik vissza — hasznosak olvasáshoz, de nem
+ * bizonyítanak semmit a valódi API-alakról. A `lastRawBody()` az, ami
+ * bizonyíték: pontosan azok a byte-ok, amiket a SimplePay elküldött.
+ */
+final class RecordingHttpClient implements ClientInterface
+{
+    private ?string $lastRawBody = null;
+
+    public function __construct(private readonly ClientInterface $inner)
+    {
+    }
+
+    /** @throws ClientExceptionInterface */
+    public function sendRequest(RequestInterface $request): ResponseInterface
+    {
+        $response = $this->inner->sendRequest($request);
+        $body = $response->getBody();
+
+        $this->lastRawBody = (string) $body;
+
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+
+        return $response;
+    }
+
+    /**
+     * A legutóbb kapott válasz nyers törzse, ahogy a SimplePay ténylegesen
+     * elküldte — a Client/DTO rétegen még nem ment át.
+     */
+    public function lastRawBody(): ?string
+    {
+        return $this->lastRawBody;
+    }
+}
+```
 
 - [ ] **Step 2: Írd meg a közös ősosztályt**
 
@@ -4416,6 +4524,8 @@ abstract class SandboxTestCase extends TestCase
 {
     protected const string FIXTURE_DIR = __DIR__ . '/../Fixtures/sandbox';
 
+    private ?RecordingHttpClient $recorder = null;
+
     protected function client(): Client
     {
         $merchant = getenv('SIMPLEPAY_SANDBOX_MERCHANT');
@@ -4426,29 +4536,99 @@ abstract class SandboxTestCase extends TestCase
         }
 
         $factory = new Psr17Factory();
+        $this->recorder = new RecordingHttpClient(new CurlClient($factory, $factory));
 
         return new Client(
             new Config($merchant, $secret, Environment::Sandbox),
-            new CurlClient($factory, $factory),
+            $this->recorder,
             $factory,
             $factory,
         );
     }
 
     /**
-     * A valódi választ fixture-ként rögzíti, hogy a unit tesztek ne kitalált,
-     * hanem mért adatot játsszanak vissza.
+     * A legutóbb a sandboxtól kapott NYERS válasz-törzs, a Client/DTO
+     * rétegen még át nem esve. Ez a fixture-ök bizonyító ereje: a
+     * `record()`-nak átadott DTO-összefoglalók a saját szerializálásunkat
+     * játsszák vissza, ez viszont a huzalon ténylegesen látott byte-okat.
+     *
+     * Csak azután hívható, hogy a `client()`-tel kapott klienssel legalább
+     * egy hívás lezajlott — különben hangosan dob, nem ad vissza csendben
+     * semmit.
+     */
+    protected function rawResponse(): string
+    {
+        if (null === $this->recorder) {
+            throw new \LogicException(
+                'rawResponse() a client() metódus előtt lett meghívva — nincs mit rögzíteni.',
+            );
+        }
+
+        $raw = $this->recorder->lastRawBody();
+
+        if (null === $raw) {
+            throw new \LogicException(
+                'rawResponse()-t hívtunk, de a client()-tel kapott kliensen keresztül még nem ment '
+                . 'ki egyetlen hívás sem.',
+            );
+        }
+
+        return $raw;
+    }
+
+    /**
+     * A valódi választ fixture-ként rögzíti — DTO-összefoglalóként,
+     * olvashatóság kedvéért. A bizonyító erejű rögzítéshez lásd
+     * `recordRaw()`.
+     *
+     * A könyvtár létrehozása és a fájlírás sikerét explicit ellenőrizzük:
+     * ha bármelyik csendben elhasalna, a korábbi fixture maradna a
+     * lemezen, és a kontraktus-teszt zölden térne vissza úgy, hogy
+     * valójában semmi nem lett rögzítve — pont azon az egy helyen, ahol a
+     * fixture maga a bizonyíték.
      */
     protected function record(string $name, mixed $payload): void
     {
-        if (!is_dir(self::FIXTURE_DIR)) {
-            mkdir(self::FIXTURE_DIR, 0o775, true);
+        self::ensureFixtureDirExists();
+
+        $path = sprintf('%s/%s.json', self::FIXTURE_DIR, $name);
+        $encoded = json_encode(
+            $payload,
+            \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR,
+        ) . "\n";
+
+        if (false === file_put_contents($path, $encoded)) {
+            throw new \RuntimeException(sprintf('Nem sikerült a fixture-t kiírni: "%s".', $path));
+        }
+    }
+
+    /**
+     * A legutóbb kapott NYERS válasz-törzset rögzíti fixture-ként —
+     * pontosan azt, amit a SimplePay a huzalon elküldött, a Client/DTO
+     * rétegen való áthaladás előtt. Ez a fixture-fajta hordozza a
+     * bizonyító erőt: a `FixtureConformanceTest` ezeken keresztül tudja
+     * ellenőrizni, hogy a válasz-osztályaink a valódi API-alakot parsolják,
+     * nem a saját korábbi szerializálásunkat.
+     */
+    protected function recordRaw(string $name): void
+    {
+        $decoded = json_decode($this->rawResponse(), true, 512, \JSON_THROW_ON_ERROR);
+
+        $this->record($name, $decoded);
+    }
+
+    private static function ensureFixtureDirExists(): void
+    {
+        if (is_dir(self::FIXTURE_DIR)) {
+            return;
         }
 
-        file_put_contents(
-            sprintf('%s/%s.json', self::FIXTURE_DIR, $name),
-            json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n",
-        );
+        if (!mkdir(self::FIXTURE_DIR, 0o775, true) && !is_dir(self::FIXTURE_DIR)) {
+            throw new \RuntimeException(sprintf(
+                'Nem sikerült létrehozni a fixture könyvtárat: "%s".',
+                self::FIXTURE_DIR,
+            ));
+        }
     }
 
     protected function orderRef(): string
@@ -4501,6 +4681,8 @@ final class StartContractTest extends SandboxTestCase
         self::assertStringStartsWith('https://', $response->paymentUrl);
         self::assertSame(1000, $response->total->minorUnits);
 
+        // A DTO-összefoglaló olvashatóság kedvéért marad, de a bizonyító erejű
+        // fixture a nyers, dekódolatlan válasz-törzs — lásd recordRaw().
         $this->record('start', [
             'orderRef' => $response->orderRef,
             'transactionId' => $response->transactionId,
@@ -4510,6 +4692,8 @@ final class StartContractTest extends SandboxTestCase
             'currency' => $response->total->currency->value,
             'timeout' => $response->timeout?->format(\DateTimeInterface::ATOM),
         ]);
+
+        $this->recordRaw('raw_start');
     }
 }
 ```
@@ -4563,6 +4747,8 @@ final class QueryContractTest extends SandboxTestCase
         self::assertNotNull($transaction, 'A lekérdezés a transactions tömbben adja vissza a tranzakciót.');
         self::assertInstanceOf(TransactionStatus::class, $transaction->status);
 
+        // A DTO-összefoglaló olvashatóság kedvéért marad, de a bizonyító erejű
+        // fixture a nyers, dekódolatlan válasz-törzs — lásd recordRaw().
         $this->record('query', [
             'totalCount' => $response->totalCount,
             'transactions' => array_map(
@@ -4582,6 +4768,8 @@ final class QueryContractTest extends SandboxTestCase
                 $response->transactions,
             ),
         ]);
+
+        $this->recordRaw('raw_query');
     }
 }
 ```
@@ -4625,10 +4813,16 @@ final class RefundContractTest extends SandboxTestCase
         } catch (RequestException $exception) {
             self::assertNotSame([], $exception->codes());
 
+            // A DTO-összefoglaló olvashatóság kedvéért marad, de a bizonyító
+            // erejű fixture a nyers, dekódolatlan válasz-törzs — lásd
+            // recordRaw(). Ez a szó szerinti "errorCodes" kulcsot hordozza,
+            // nem a mi kényelmi "codes" nevünket.
             $this->record('refund_error', [
                 'codes' => $exception->codes(),
                 'message' => $exception->getMessage(),
             ]);
+
+            $this->recordRaw('raw_refund_error');
         }
     }
 }
@@ -4663,6 +4857,8 @@ Expected: valódi sandbox válaszok. Vesd össze a Task 8 unit tesztjeinek fixtu
 git add composer.json composer.lock tests/Sandbox tests/Fixtures
 git commit -m "test: sandbox kontraktus-tesztek es fixture-rogzites"
 ```
+
+**Fix round 1 (2026-08-30, review után) — a fixture-ök nem voltak bizonyíték.** A `record()` a DTO-inkat írta vissza (`$response->total->toApiValue()` stb.), tehát a `FixtureConformanceTest` a saját szerializálásunkat parsolta vissza — tautológia. Javítva: `RecordingHttpClient` (Step 1b) a PSR-18 réteg alatt megőrzi a nyers válasz-törzset; `SandboxTestCase::recordRaw()` ezt írja ki `raw_start.json`/`raw_query.json`/`raw_refund_error.json` néven; a `FixtureConformanceTest` immár ezeken keresztül is ellenőrzi a válasz-osztályokat, data providerrel (egy rossz fixture nem rejti el a többit). A `record()` mkdir/file_put_contents hívásai mostantól hangosan dobnak siker helyett csendes visszatérés esetén. A `QueryRequest::$detailed`/`$refunds` eltávolítása a feature mátrixban félrevezetően "kihagyva"-ként szerepelt, holott a `detailed:true` mindig kimegy (csak a válasza modellezetlen) — a spec 15. fejezete pontosítva. A `Signature` mostantól trim()-eli a secretKey-t aláírás előtt, a hivatalos SimplePay PHP SDK (2.1.5, 2026-06-27) `getSignature()`-jével összhangban. Lásd a Task 13 jelentést a teljes indoklásért.
 
 ---
 
